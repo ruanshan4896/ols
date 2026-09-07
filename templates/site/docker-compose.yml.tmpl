@@ -1,0 +1,32 @@
+services:
+  ols:
+    image: litespeedtech/openlitespeed:1.8.2-lsphp{{ .PHPVersionShort }}
+    container_name: ols_{{ .DomainSlug }}
+    restart: always
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+    volumes:
+      - ./html:/var/www/vhosts/localhost/html
+      - ./ols/conf/vhost.conf:/usr/local/lsws/conf/vhosts/localhost/vhconf.conf
+    networks:
+      - {{ .NetworkName }}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.{{ .DomainSlug }}.rule=Host(`{{ .Domain }}`) || Host(`www.{{ .Domain }}`)"
+      - "traefik.http.routers.{{ .DomainSlug }}.entrypoints=websecure"
+      - "traefik.http.routers.{{ .DomainSlug }}.tls.certresolver=letsencrypt"
+      - "traefik.http.services.{{ .DomainSlug }}.loadbalancer.server.port=80"
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis_{{ .DomainSlug }}
+    restart: always
+    command: ["redis-server", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru", "--requirepass", "{{ .RedisPass }}"]
+    networks:
+      - {{ .NetworkName }}
+
+networks:
+  {{ .NetworkName }}:
+    external: true

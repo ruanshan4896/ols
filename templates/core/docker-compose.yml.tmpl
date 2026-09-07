@@ -1,0 +1,35 @@
+services:
+  traefik:
+    image: traefik:v3.1
+    container_name: ols-traefik
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443/tcp"
+      - "443:443/udp"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/acme.json:/etc/traefik/acme.json
+    networks:
+      - {{ .NetworkName }}
+
+  mariadb:
+    image: mariadb:11.4
+    container_name: ols-mariadb
+    restart: always
+    environment:
+      MARIADB_ROOT_PASSWORD: "{{ .DBRootPassword }}"
+    volumes:
+      - ./mariadb/data:/var/lib/mysql
+    networks:
+      - {{ .NetworkName }}
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+networks:
+  {{ .NetworkName }}:
+    external: true

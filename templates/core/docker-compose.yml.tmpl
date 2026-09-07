@@ -1,8 +1,10 @@
 services:
   traefik:
-    image: traefik:v3.1
+    image: traefik:v3.3
     container_name: ols-traefik
     restart: always
+    environment:
+      - DOCKER_API_VERSION=1.44
     ports:
       - "80:80"
       - "443:443/tcp"

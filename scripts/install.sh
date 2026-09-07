@@ -16,7 +16,8 @@ mkdir -p /opt/ols/bin
 cp bin/$BINARY /opt/ols/bin/ols-cli
 chmod +x /opt/ols/bin/ols-cli
 
-# Tạo symlink toàn cục
+# Tạo symlink toàn cục (hỗ trợ cả lệnh 'ols' và 'ols-cli')
 ln -sf /opt/ols/bin/ols-cli /usr/local/bin/ols-cli
+ln -sf /opt/ols/bin/ols-cli /usr/local/bin/ols
 
-echo "✓ Cài đặt thành công! Bạn có thể sử dụng lệnh: ols-cli"
+echo "✓ Cài đặt thành công! Bạn có thể sử dụng lệnh: ols hoặc ols-cli"

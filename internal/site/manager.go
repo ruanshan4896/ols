@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/ols-cli/ols/internal/config"
 	"github.com/ols-cli/ols/internal/docker"
@@ -178,14 +179,44 @@ require_once ABSPATH . 'wp-settings.php';
 		}
 	}
 
-	// Phân quyền cho user 1001 của OpenLiteSpeed và cấp quyền 755 cho thư mục
-	_ = exec.Command("chown", "-R", "1001:1001", siteDir).Run()
-	_ = exec.Command("chmod", "-R", "755", htmlDir).Run()
+	// Đảm bảo file .htaccess tồn tại cho các đường dẫn tĩnh (permalinks) WordPress
+	htaccessPath := filepath.Join(htmlDir, ".htaccess")
+	if _, err := os.Stat(htaccessPath); os.IsNotExist(err) {
+		defaultHtaccess := `# BEGIN WordPress
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+RewriteBase /
+RewriteRule ^index\.php$ - [L]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule . /index.php [L]
+</IfModule>
+# END WordPress
+`
+		_ = os.WriteFile(htaccessPath, []byte(defaultHtaccess), 0664)
+	}
+
+	// Phân quyền cho user nobody (UID 65534) của OpenLiteSpeed và cấp toàn quyền ghi cho WordPress
+	_ = exec.Command("chown", "-R", "65534:65534", htmlDir).Run()
+	_ = exec.Command("chmod", "-R", "775", htmlDir).Run()
+	wpContentDir := filepath.Join(htmlDir, "wp-content")
+	_ = os.MkdirAll(filepath.Join(wpContentDir, "upgrade"), 0777)
+	_ = os.MkdirAll(filepath.Join(wpContentDir, "uploads"), 0777)
+	_ = os.MkdirAll(filepath.Join(wpContentDir, "plugins"), 0777)
+	_ = exec.Command("chmod", "-R", "777", wpContentDir).Run()
 
 	// 6. Khởi chạy stack site
 	if err = m.dm.ComposeUp(siteDir); err != nil {
 		return fmt.Errorf("khởi chạy container: %w", err)
 	}
+
+	// 7. Cài đặt PHP Redis extension nếu chưa có (chạy ngầm, không làm chậm quá trình tạo site)
+	phpShort := strings.ReplaceAll(opts.PHPVersion, ".", "")
+	go func() {
+		time.Sleep(3 * time.Second)
+		_, _ = m.dm.ExecInContainer("ols_"+slug, "sh", "-c", "dpkg -l | grep -q 'lsphp.*-redis' || (apt-get update -qq && apt-get install -y -qq lsphp"+phpShort+"-redis && touch /tmp/lshttpd/restart.txt)")
+	}()
 
 	return nil
 }

@@ -15,3 +15,7 @@ bin/
 Thumbs.db
 .idea/
 .vscode/
+
+# Archives
+*.zip
+*.tar.gz

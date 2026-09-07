@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -136,6 +137,51 @@ func (b *BackupManager) RestoreSite(domain string, backupFile string) error {
 			outFile.Close()
 		}
 	}
+
+	slug := site.DomainToSlug(domain)
+
+	// 1. Nếu có database.sql, nạp vào MariaDB
+	sqlDumpPath := filepath.Join(siteDir, "database.sql")
+	if _, err := os.Stat(sqlDumpPath); err == nil {
+		dbName := "wp_" + slug
+		sqlContent, readErr := os.ReadFile(sqlDumpPath)
+		if readErr == nil && len(sqlContent) > 0 {
+			_, _ = b.dm.ExecInContainer("ols-mariadb", "sh", "-c", fmt.Sprintf("mariadb -uroot -p%s %s << 'EOF'\n%s\nEOF", b.cfg.DBRootPassword, dbName, string(sqlContent)))
+		}
+		_ = os.Remove(sqlDumpPath)
+	}
+
+	htmlDir := filepath.Join(siteDir, "html")
+
+	// 2. Đảm bảo file .htaccess tồn tại để rewrite permalinks không bị 404
+	htaccessPath := filepath.Join(htmlDir, ".htaccess")
+	if _, err := os.Stat(htaccessPath); os.IsNotExist(err) {
+		defaultHtaccess := `# BEGIN WordPress
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+RewriteBase /
+RewriteRule ^index\.php$ - [L]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule . /index.php [L]
+</IfModule>
+# END WordPress
+`
+		_ = os.WriteFile(htaccessPath, []byte(defaultHtaccess), 0664)
+	}
+
+	// 3. Phân quyền chuẩn xác cho user nobody (UID 65534) của OpenLiteSpeed
+	_ = exec.Command("chown", "-R", "65534:65534", htmlDir).Run()
+	_ = exec.Command("chmod", "-R", "775", htmlDir).Run()
+	wpContentDir := filepath.Join(htmlDir, "wp-content")
+	_ = os.MkdirAll(filepath.Join(wpContentDir, "upgrade"), 0777)
+	_ = os.MkdirAll(filepath.Join(wpContentDir, "uploads"), 0777)
+	_ = os.MkdirAll(filepath.Join(wpContentDir, "plugins"), 0777)
+	_ = exec.Command("chmod", "-R", "777", wpContentDir).Run()
+
+	// 4. Khởi động lại container OpenLiteSpeed để nạp cấu hình mới & rewrite
+	_ = b.dm.ComposeRestart(siteDir)
 
 	return nil
 }

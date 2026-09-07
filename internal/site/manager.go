@@ -211,11 +211,13 @@ RewriteRule . /index.php [L]
 		return fmt.Errorf("khởi chạy container: %w", err)
 	}
 
-	// 7. Cài đặt PHP Redis extension nếu chưa có (chạy ngầm, không làm chậm quá trình tạo site)
+	// 7. Cài đặt các extension tối ưu hóa WordPress (Redis, ImageMagick, Msgpack, Igbinary, Intl) chạy ngầm
 	phpShort := strings.ReplaceAll(opts.PHPVersion, ".", "")
 	go func() {
 		time.Sleep(3 * time.Second)
-		_, _ = m.dm.ExecInContainer("ols_"+slug, "sh", "-c", "dpkg -l | grep -q 'lsphp.*-redis' || (apt-get update -qq && apt-get install -y -qq lsphp"+phpShort+"-redis && touch /tmp/lshttpd/restart.txt)")
+		pkgList := fmt.Sprintf("lsphp%s-redis lsphp%s-imagick lsphp%s-msgpack lsphp%s-igbinary lsphp%s-intl", phpShort, phpShort, phpShort, phpShort, phpShort)
+		installCmd := fmt.Sprintf("dpkg -l | grep -q 'lsphp.*-redis' || (apt-get update -qq && apt-get install -y -qq %s && touch /tmp/lshttpd/restart.txt)", pkgList)
+		_, _ = m.dm.ExecInContainer("ols_"+slug, "sh", "-c", installCmd)
 	}()
 
 	return nil

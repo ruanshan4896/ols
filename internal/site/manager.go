@@ -152,9 +152,16 @@ define( 'WP_DEBUG', false );
 // Khắc phục triệt để lỗi hỏi FTP khi cài/cập nhật plugin & theme
 define( 'FS_METHOD', 'direct' );
 
-// Cấu hình Shared Redis Object Cache ở hạ tầng dùng chung
+// Cấu hình cách ly tuyệt đối Redis Object Cache cho LiteSpeed Cache (LSCWP)
+define( 'LSOC_PREFIX', '%s:' );
+define( 'LITESPEED_CONF', true );
+define( 'LITESPEED_CONF__OBJECT__HOST', 'ols-redis' );
+define( 'LITESPEED_CONF__OBJECT__PORT', 6379 );
+
+// Cấu hình cách ly cho plugin Redis Object Cache & WordPress Core
 define( 'WP_REDIS_HOST', 'ols-redis' );
 define( 'WP_REDIS_PORT', 6379 );
+define( 'WP_REDIS_PREFIX', '%s:' );
 define( 'WP_CACHE_KEY_SALT', '%s:' );
 define( 'WP_CACHE', true );
 
@@ -172,7 +179,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	define( 'ABSPATH', __DIR__ . '/' );
 }
 require_once ABSPATH . 'wp-settings.php';
-`, dbName, dbUser, dbPass, slug, salts[0], salts[1], salts[2], salts[3], salts[4], salts[5], salts[6], salts[7])
+`, dbName, dbUser, dbPass, slug, slug, slug, salts[0], salts[1], salts[2], salts[3], salts[4], salts[5], salts[6], salts[7])
 
 		if err = os.WriteFile(filepath.Join(htmlDir, "wp-config.php"), []byte(wpConfig), 0644); err != nil {
 			return fmt.Errorf("tạo wp-config.php: %w", err)
@@ -361,7 +368,20 @@ RewriteRule . /index.php [L]
 	_ = os.MkdirAll(filepath.Join(wpContentDir, "plugins"), 0777)
 	_ = exec.Command("chmod", "-R", "777", wpContentDir).Run()
 
-	// 6. Tái khởi động lại container để nạp cấu hình mới
+	// 6. Tự động đồng bộ tiền tố cách ly Redis (LSOC_PREFIX) vào wp-config.php nếu thiếu
+	wpConfigPath := filepath.Join(htmlDir, "wp-config.php")
+	if configBytes, err := os.ReadFile(wpConfigPath); err == nil {
+		configStr := string(configBytes)
+		if !strings.Contains(configStr, "LSOC_PREFIX") {
+			redisDirectives := fmt.Sprintf("\n// Cấu hình cách ly Redis Object Cache độc quyền cho LiteSpeed Cache\ndefine( 'LSOC_PREFIX', '%s:' );\ndefine( 'WP_REDIS_PREFIX', '%s:' );\n", slug, slug)
+			if idx := strings.Index(configStr, "require_once ABSPATH"); idx != -1 {
+				newConfig := configStr[:idx] + redisDirectives + configStr[idx:]
+				_ = os.WriteFile(wpConfigPath, []byte(newConfig), 0644)
+			}
+		}
+	}
+
+	// 7. Tái khởi động lại container để nạp cấu hình mới
 	_ = m.dm.ComposeUp(siteDir)
 
 	// 7. Cài đặt các extension tối ưu hóa chạy ngầm nếu chưa có

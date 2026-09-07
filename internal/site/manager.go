@@ -128,7 +128,27 @@ func (m *Manager) CreateSite(opts CreateSiteOptions) (err error) {
 
 	// 5. Cấu hình mã nguồn WordPress
 	if opts.InstallWP {
-		_ = downloadWordPress(htmlDir)
+		// Tạo file index.php chào mừng hiển thị tức thì
+		starterPHP := fmt.Sprintf(`<?php
+echo '<!DOCTYPE html>
+<html lang="vi">
+<head><meta charset="UTF-8"><title>%s - OpenLiteSpeed</title>
+<style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f0f2f5;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;}
+.card{background:#fff;padding:40px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.08);max-width:520px;text-align:center;}
+h1{color:#0073aa;margin-top:0;}p{color:#555;line-height:1.6;}
+.badge{display:inline-block;padding:6px 14px;background:#e7f5ea;color:#1b5e20;border-radius:20px;font-weight:600;font-size:14px;margin-bottom:15px;}
+code{background:#f4f4f4;padding:2px 6px;border-radius:4px;}
+</style></head>
+<body><div class="card">
+<span class="badge">✓ Website đã sẵn sàng</span>
+<h1>%s</h1>
+<p>Website vận hành trên <strong>OpenLiteSpeed</strong> + <strong>Docker</strong> độc lập kèm <strong>Redis Cache</strong>.</p>
+<p>Database: <code>%s</code> | User: <code>%s</code></p>
+<p style="font-size:13px;color:#888;">Nếu đang cài WordPress, hệ thống đang đồng bộ mã nguồn...</p>
+</div></body></html>';
+?>`, opts.Domain, opts.Domain, dbName, dbUser)
+
+		_ = os.WriteFile(filepath.Join(htmlDir, "index.php"), []byte(starterPHP), 0644)
 
 		wpConfig := fmt.Sprintf(`<?php
 define( 'DB_NAME', '%s' );
@@ -153,6 +173,9 @@ require_once ABSPATH . 'wp-settings.php';
 `, dbName, dbUser, dbPass, slug, redisPass)
 
 		_ = os.WriteFile(filepath.Join(htmlDir, "wp-config.php"), []byte(wpConfig), 0644)
+
+		// Tải WordPress trong nền
+		go downloadWordPress(htmlDir)
 	}
 
 	// Phân quyền cho user 1001 của OpenLiteSpeed
@@ -172,12 +195,10 @@ func downloadWordPress(targetDir string) error {
 		tarCmd := exec.Command("tar", "-xzf", "/tmp/wordpress.tar.gz", "--strip-components=1", "-C", targetDir)
 		_ = tarCmd.Run()
 		_ = os.Remove("/tmp/wordpress.tar.gz")
+		_ = exec.Command("chown", "-R", "1001:1001", targetDir).Run()
 		return nil
 	}
-
-	// Fallback nếu môi trường chưa tải được file tar
-	indexPHP := `<?php echo "<h1>Website OpenLiteSpeed + WordPress đã sẵn sàng!</h1><p>Mã nguồn và Database đã được thiết lập thành công.</p>"; phpinfo(); ?>`
-	return os.WriteFile(filepath.Join(targetDir, "index.php"), []byte(indexPHP), 0644)
+	return nil
 }
 
 func (m *Manager) DeleteSite(domain string, force bool) error {

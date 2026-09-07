@@ -6,12 +6,16 @@ services:
     environment:
       - TZ=Asia/Ho_Chi_Minh
     volumes:
-      - ./html:/var/www/vhosts/localhost/html
-      - ./ols/conf/vhost.conf:/usr/local/lsws/conf/vhosts/localhost/vhconf.conf
+      - ./html:/usr/local/lsws/Example/html
+      - ./ols/conf/vhost.conf:/usr/local/lsws/conf/vhosts/Example/vhconf.conf
     networks:
       - {{ .NetworkName }}
     labels:
       - "traefik.enable=true"
+      # Router HTTP (Truy cập được ngay lập tức trên cổng 80)
+      - "traefik.http.routers.{{ .DomainSlug }}-http.rule=Host(`{{ .Domain }}`) || Host(`www.{{ .Domain }}`)"
+      - "traefik.http.routers.{{ .DomainSlug }}-http.entrypoints=web"
+      # Router HTTPS (Tự động cấp chứng chỉ SSL Let's Encrypt trên cổng 443)
       - "traefik.http.routers.{{ .DomainSlug }}.rule=Host(`{{ .Domain }}`) || Host(`www.{{ .Domain }}`)"
       - "traefik.http.routers.{{ .DomainSlug }}.entrypoints=websecure"
       - "traefik.http.routers.{{ .DomainSlug }}.tls.certresolver=letsencrypt"

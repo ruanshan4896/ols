@@ -1,6 +1,10 @@
 package site
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ols-cli/ols/internal/config"
+)
 
 func TestDomainToSlug(t *testing.T) {
 	tests := []struct {
@@ -33,5 +37,14 @@ func TestValidateDomain(t *testing.T) {
 		if err := ValidateDomain(d); err == nil {
 			t.Errorf("expected %s to be invalid", d)
 		}
+	}
+}
+
+func TestSyncSiteNonExistent(t *testing.T) {
+	cfg := &config.Config{SystemDir: t.TempDir()}
+	mgr := NewManager(cfg)
+	err := mgr.SyncSite("notfound.com")
+	if err == nil {
+		t.Errorf("expected error when syncing non-existent site")
 	}
 }

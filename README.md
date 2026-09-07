@@ -87,9 +87,10 @@ ols
   [7] Khôi phục website từ bản sao lưu (Restore)
   [8] Quản trị Database phpMyAdmin (Bật / Tắt)
   [9] Kiểm tra trạng thái các container Docker
+  [10] Đồng bộ cấu hình các website (Sync & Upgrade Config)
   [0] Thoát
 ==================================================================
-👉 Nhập lựa chọn của bạn [0-9]: 
+👉 Nhập lựa chọn của bạn [0-10]: 
 ```
 
 ---
@@ -143,6 +144,16 @@ ols pma enable --port 8080
 
 # Tắt phpMyAdmin khi không sử dụng để tiết kiệm RAM
 ols pma disable
+```
+
+#### Đồng bộ & Nâng cấp cấu hình website (`sync`)
+Khi bạn cập nhật template vhost mới, cài thêm extension hoặc cập nhật Traefik:
+```bash
+# Đồng bộ một website cụ thể
+ols sync example.com
+
+# Hoặc tự động đồng bộ toàn bộ website trên VPS
+ols sync --all
 ```
 
 ---

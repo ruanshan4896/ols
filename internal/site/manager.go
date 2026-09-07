@@ -285,3 +285,111 @@ func (m *Manager) RestartSite(domain string) error {
 	siteDir := filepath.Join(m.cfg.SystemDir, "sites", domain)
 	return m.dm.ComposeRestart(siteDir)
 }
+
+func (m *Manager) SyncSite(domain string) error {
+	siteDir := filepath.Join(m.cfg.SystemDir, "sites", domain)
+	if _, err := os.Stat(siteDir); os.IsNotExist(err) {
+		return fmt.Errorf("website '%s' không tồn tại", domain)
+	}
+
+	slug := DomainToSlug(domain)
+
+	// 1. Cập nhật file vhost.conf mới nhất
+	olsConfDir := filepath.Join(siteDir, "ols", "conf")
+	_ = os.MkdirAll(olsConfDir, 0755)
+	vhostContent, err := template.RenderSiteVhost(domain)
+	if err != nil {
+		return fmt.Errorf("render vhost: %w", err)
+	}
+	if err = os.WriteFile(filepath.Join(olsConfDir, "vhost.conf"), []byte(vhostContent), 0644); err != nil {
+		return fmt.Errorf("ghi vhost.conf: %w", err)
+	}
+
+	// 2. Nhận diện phiên bản PHP từ docker-compose hiện tại
+	phpVer := "8.2"
+	composePath := filepath.Join(siteDir, "docker-compose.yml")
+	if content, err := os.ReadFile(composePath); err == nil {
+		re := regexp.MustCompile(`lsphp(8[1-3])`)
+		if match := re.FindStringSubmatch(string(content)); len(match) > 1 {
+			switch match[1] {
+			case "81":
+				phpVer = "8.1"
+			case "82":
+				phpVer = "8.2"
+			case "83":
+				phpVer = "8.3"
+			}
+		}
+	}
+
+	// 3. Cập nhật file docker-compose.yml
+	composeContent, err := template.RenderSiteCompose(template.SiteTemplateData{
+		Domain:      domain,
+		DomainSlug:  slug,
+		PHPVersion:  phpVer,
+		NetworkName: m.cfg.NetworkName,
+	})
+	if err == nil {
+		_ = os.WriteFile(composePath, []byte(composeContent), 0644)
+	}
+
+	// 4. Đảm bảo file .htaccess tồn tại
+	htmlDir := filepath.Join(siteDir, "html")
+	htaccessPath := filepath.Join(htmlDir, ".htaccess")
+	if _, err := os.Stat(htaccessPath); os.IsNotExist(err) {
+		defaultHtaccess := `# BEGIN WordPress
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+RewriteBase /
+RewriteRule ^index\.php$ - [L]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule . /index.php [L]
+</IfModule>
+# END WordPress
+`
+		_ = os.WriteFile(htaccessPath, []byte(defaultHtaccess), 0664)
+	}
+
+	// 5. Đồng bộ phân quyền user nobody (UID 65534)
+	_ = exec.Command("chown", "-R", "65534:65534", htmlDir).Run()
+	_ = exec.Command("chmod", "-R", "775", htmlDir).Run()
+	wpContentDir := filepath.Join(htmlDir, "wp-content")
+	_ = os.MkdirAll(filepath.Join(wpContentDir, "upgrade"), 0777)
+	_ = os.MkdirAll(filepath.Join(wpContentDir, "uploads"), 0777)
+	_ = os.MkdirAll(filepath.Join(wpContentDir, "plugins"), 0777)
+	_ = exec.Command("chmod", "-R", "777", wpContentDir).Run()
+
+	// 6. Tái khởi động lại container để nạp cấu hình mới
+	_ = m.dm.ComposeUp(siteDir)
+
+	// 7. Cài đặt các extension tối ưu hóa chạy ngầm nếu chưa có
+	phpShort := strings.ReplaceAll(phpVer, ".", "")
+	go func() {
+		time.Sleep(2 * time.Second)
+		pkgList := fmt.Sprintf("lsphp%s-redis lsphp%s-imagick lsphp%s-msgpack lsphp%s-igbinary lsphp%s-intl", phpShort, phpShort, phpShort, phpShort, phpShort)
+		installCmd := fmt.Sprintf("dpkg -l | grep -q 'lsphp.*-redis' || (apt-get update -qq && apt-get install -y -qq %s && touch /tmp/lshttpd/restart.txt)", pkgList)
+		_, _ = m.dm.ExecInContainer("ols_"+slug, "sh", "-c", installCmd)
+	}()
+
+	return nil
+}
+
+func (m *Manager) SyncAllSites() ([]string, []error) {
+	sites, err := m.ListSites()
+	if err != nil {
+		return nil, []error{err}
+	}
+
+	var synced []string
+	var errs []error
+	for _, s := range sites {
+		if err := m.SyncSite(s.Domain); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", s.Domain, err))
+		} else {
+			synced = append(synced, s.Domain)
+		}
+	}
+	return synced, errs
+}

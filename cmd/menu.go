@@ -68,10 +68,11 @@ func RunInteractiveMenu(r io.Reader, w io.Writer) error {
 		fmt.Println("  [7] Khôi phục website từ bản sao lưu (Restore)")
 		fmt.Println("  [8] Quản trị Database phpMyAdmin (Bật / Tắt)")
 		fmt.Println("  [9] Kiểm tra trạng thái các container Docker")
+		fmt.Println("  [10] Đồng bộ cấu hình các website (Sync & Upgrade Config)")
 		fmt.Println("  [0] Thoát")
 		color.New(color.FgCyan, color.Bold).Println("==================================================================")
 
-		choice := readInput(reader, "👉 Nhập lựa chọn của bạn [0-9]", "")
+		choice := readInput(reader, "👉 Nhập lựa chọn của bạn [0-10]", "")
 		if choice == "" {
 			continue
 		}
@@ -285,8 +286,45 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 		_ = cmd.Run()
 		pauseForEnter(reader)
 
+	case "10":
+		if errCfg != nil {
+			color.Red("\nHệ thống chưa được khởi tạo!")
+			pauseForEnter(reader)
+			return
+		}
+		color.Cyan("\n--- [10] Đồng bộ cấu hình các website ---")
+		sub := readInput(reader, "Chọn: [1] Đồng bộ 1 website cụ thể | [2] Đồng bộ TẤT CẢ website", "2")
+		mgr := site.NewManager(cfg)
+		if sub == "1" {
+			domain := readInput(reader, "Nhập tên miền cần đồng bộ", "")
+			if domain == "" {
+				color.Red("Tên miền không được để trống!")
+				pauseForEnter(reader)
+				return
+			}
+			color.Cyan("-> Đang đồng bộ cấu hình website %s...", domain)
+			if err := mgr.SyncSite(domain); err != nil {
+				color.Red("Đồng bộ thất bại: %v", err)
+			} else {
+				color.Green("✓ Đồng bộ cấu hình website %s thành công!", domain)
+			}
+		} else {
+			color.Cyan("-> Đang đồng bộ cấu hình toàn bộ website...")
+			synced, errs := mgr.SyncAllSites()
+			for _, d := range synced {
+				color.Green("✓ Đã đồng bộ thành công: %s", d)
+			}
+			for _, e := range errs {
+				color.Red("✗ Thất bại: %v", e)
+			}
+			if len(synced) == 0 && len(errs) == 0 {
+				color.Yellow("Hiện chưa có website nào trên hệ thống.")
+			}
+		}
+		pauseForEnter(reader)
+
 	default:
-		color.Yellow("Lựa chọn không hợp lệ! Vui lòng chọn từ 0 đến 9.")
+		color.Yellow("Lựa chọn không hợp lệ! Vui lòng chọn từ 0 đến 10.")
 		pauseForEnter(reader)
 	}
 }

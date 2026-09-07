@@ -3,7 +3,9 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/ols-cli/ols/internal/config"
@@ -28,11 +30,17 @@ var initCmd = &cobra.Command{
 		cfg := config.DefaultConfig()
 		cfg.ACMEEmail = initEmail
 
-		rootPass, err := util.GenerateRandomString(32)
-		if err != nil {
-			return fmt.Errorf("sinh mật khẩu root mariadb: %w", err)
+		configPath := filepath.Join(cfg.SystemDir, "config", "ols.yaml")
+		existingCfg, err := config.LoadConfig(configPath)
+		if err == nil && existingCfg.DBRootPassword != "" {
+			cfg.DBRootPassword = existingCfg.DBRootPassword
+		} else {
+			rootPass, err := util.GenerateRandomString(32)
+			if err != nil {
+				return fmt.Errorf("sinh mật khẩu root mariadb: %w", err)
+			}
+			cfg.DBRootPassword = rootPass
 		}
-		cfg.DBRootPassword = rootPass
 
 		// 1. Tạo các thư mục
 		coreDir := filepath.Join(cfg.SystemDir, "core")
@@ -82,7 +90,6 @@ var initCmd = &cobra.Command{
 		}
 
 		// 5. Lưu config
-		configPath := filepath.Join(cfg.SystemDir, "config", "ols.yaml")
 		if err := config.SaveConfig(configPath, cfg); err != nil {
 			return err
 		}
@@ -97,6 +104,16 @@ var initCmd = &cobra.Command{
 		color.Yellow("-> Khởi chạy container Traefik và Shared MariaDB...")
 		if err := dm.ComposeUp(coreDir); err != nil {
 			return err
+		}
+
+		// 7. Chờ MariaDB khởi động và sẵn sàng nhận kết nối
+		color.Yellow("-> Đang chờ MariaDB khởi động và sẵn sàng nhận kết nối...")
+		for i := 0; i < 30; i++ {
+			pingCmd := exec.Command("docker", "exec", "ols-mariadb", "mariadb-admin", "ping", "-uroot", "-p"+cfg.DBRootPassword, "--silent")
+			if err := pingCmd.Run(); err == nil {
+				break
+			}
+			time.Sleep(1 * time.Second)
 		}
 
 		color.Green("✓ Hệ thống đã khởi tạo thành công!")

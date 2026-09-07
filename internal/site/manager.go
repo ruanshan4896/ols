@@ -72,10 +72,6 @@ func (m *Manager) CreateSite(opts CreateSiteOptions) (err error) {
 	if err != nil {
 		return err
 	}
-	redisPass, err := util.GenerateRandomString(24)
-	if err != nil {
-		return err
-	}
 
 	// 1. Tạo database và user trực tiếp qua container MariaDB
 	dbClient := mariadb.NewContainerClient("ols-mariadb", m.cfg.DBRootPassword)
@@ -111,12 +107,11 @@ func (m *Manager) CreateSite(opts CreateSiteOptions) (err error) {
 		return err
 	}
 
-	// 4. Render file docker-compose.yml
+	// 4. Render file docker-compose.yml (chỉ gồm OpenLiteSpeed, dùng Shared Redis ở Core)
 	composeContent, err := template.RenderSiteCompose(template.SiteTemplateData{
 		Domain:      opts.Domain,
 		DomainSlug:  slug,
 		PHPVersion:  opts.PHPVersion,
-		RedisPass:   redisPass,
 		NetworkName: m.cfg.NetworkName,
 	})
 	if err != nil {
@@ -126,30 +121,21 @@ func (m *Manager) CreateSite(opts CreateSiteOptions) (err error) {
 		return err
 	}
 
-	// 5. Cấu hình mã nguồn WordPress
+	// 5. Tải WordPress core và cấu hình wp-config.php đồng bộ
 	if opts.InstallWP {
-		// Tạo file index.php chào mừng hiển thị tức thì
-		starterPHP := fmt.Sprintf(`<?php
-echo '<!DOCTYPE html>
-<html lang="vi">
-<head><meta charset="UTF-8"><title>%s - OpenLiteSpeed</title>
-<style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f0f2f5;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;}
-.card{background:#fff;padding:40px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.08);max-width:520px;text-align:center;}
-h1{color:#0073aa;margin-top:0;}p{color:#555;line-height:1.6;}
-.badge{display:inline-block;padding:6px 14px;background:#e7f5ea;color:#1b5e20;border-radius:20px;font-weight:600;font-size:14px;margin-bottom:15px;}
-code{background:#f4f4f4;padding:2px 6px;border-radius:4px;}
-</style></head>
-<body><div class="card">
-<span class="badge">✓ Website đã sẵn sàng</span>
-<h1>%s</h1>
-<p>Website vận hành trên <strong>OpenLiteSpeed</strong> + <strong>Docker</strong> độc lập kèm <strong>Redis Cache</strong>.</p>
-<p>Database: <code>%s</code> | User: <code>%s</code></p>
-<p style="font-size:13px;color:#888;">Nếu đang cài WordPress, hệ thống đang đồng bộ mã nguồn...</p>
-</div></body></html>';
-?>`, opts.Domain, opts.Domain, dbName, dbUser)
+		// Tải và giải nén WordPress core trực tiếp
+		if err = downloadWordPress(htmlDir); err != nil {
+			return fmt.Errorf("tải bộ cài WordPress thất bại: %w", err)
+		}
 
-		_ = os.WriteFile(filepath.Join(htmlDir, "index.php"), []byte(starterPHP), 0644)
+		// Sinh các chuỗi Salt bảo mật
+		salts := make([]string, 8)
+		for i := 0; i < 8; i++ {
+			s, _ := util.GenerateRandomString(48)
+			salts[i] = s
+		}
 
+		// Tạo wp-config.php với FS_METHOD direct (loại bỏ đòi FTP) và kết nối Shared Redis
 		wpConfig := fmt.Sprintf(`<?php
 define( 'DB_NAME', '%s' );
 define( 'DB_USER', '%s' );
@@ -162,24 +148,39 @@ $table_prefix = 'wp_';
 
 define( 'WP_DEBUG', false );
 
-define( 'WP_REDIS_HOST', 'redis_%s' );
-define( 'WP_REDIS_PASSWORD', '%s' );
+// Khắc phục triệt để lỗi hỏi FTP khi cài/cập nhật plugin & theme
+define( 'FS_METHOD', 'direct' );
+
+// Cấu hình Shared Redis Object Cache ở hạ tầng dùng chung
+define( 'WP_REDIS_HOST', 'ols-redis' );
+define( 'WP_REDIS_PORT', 6379 );
+define( 'WP_CACHE_KEY_SALT', '%s:' );
 define( 'WP_CACHE', true );
+
+// Authentication Unique Keys and Salts
+define( 'AUTH_KEY',         '%s' );
+define( 'SECURE_AUTH_KEY',  '%s' );
+define( 'LOGGED_IN_KEY',    '%s' );
+define( 'NONCE_KEY',        '%s' );
+define( 'AUTH_SALT',        '%s' );
+define( 'SECURE_AUTH_SALT', '%s' );
+define( 'LOGGED_IN_SALT',   '%s' );
+define( 'NONCE_SALT',       '%s' );
 
 if ( ! defined( 'ABSPATH' ) ) {
 	define( 'ABSPATH', __DIR__ . '/' );
 }
 require_once ABSPATH . 'wp-settings.php';
-`, dbName, dbUser, dbPass, slug, redisPass)
+`, dbName, dbUser, dbPass, slug, salts[0], salts[1], salts[2], salts[3], salts[4], salts[5], salts[6], salts[7])
 
-		_ = os.WriteFile(filepath.Join(htmlDir, "wp-config.php"), []byte(wpConfig), 0644)
-
-		// Tải WordPress trong nền
-		go downloadWordPress(htmlDir)
+		if err = os.WriteFile(filepath.Join(htmlDir, "wp-config.php"), []byte(wpConfig), 0644); err != nil {
+			return fmt.Errorf("tạo wp-config.php: %w", err)
+		}
 	}
 
-	// Phân quyền cho user 1001 của OpenLiteSpeed
+	// Phân quyền cho user 1001 của OpenLiteSpeed và cấp quyền 755 cho thư mục
 	_ = exec.Command("chown", "-R", "1001:1001", siteDir).Run()
+	_ = exec.Command("chmod", "-R", "755", htmlDir).Run()
 
 	// 6. Khởi chạy stack site
 	if err = m.dm.ComposeUp(siteDir); err != nil {
@@ -191,13 +192,16 @@ require_once ABSPATH . 'wp-settings.php';
 
 func downloadWordPress(targetDir string) error {
 	cmd := exec.Command("curl", "-sSL", "https://wordpress.org/latest.tar.gz", "-o", "/tmp/wordpress.tar.gz")
-	if err := cmd.Run(); err == nil {
-		tarCmd := exec.Command("tar", "-xzf", "/tmp/wordpress.tar.gz", "--strip-components=1", "-C", targetDir)
-		_ = tarCmd.Run()
-		_ = os.Remove("/tmp/wordpress.tar.gz")
-		_ = exec.Command("chown", "-R", "1001:1001", targetDir).Run()
-		return nil
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("curl wordpress.tar.gz: %w", err)
 	}
+	defer os.Remove("/tmp/wordpress.tar.gz")
+
+	tarCmd := exec.Command("tar", "-xzf", "/tmp/wordpress.tar.gz", "--strip-components=1", "-C", targetDir)
+	if err := tarCmd.Run(); err != nil {
+		return fmt.Errorf("tar extract wordpress: %w", err)
+	}
+
 	return nil
 }
 

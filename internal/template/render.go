@@ -19,7 +19,7 @@ type SiteTemplateData struct {
 	DomainSlug      string
 	PHPVersion      string
 	PHPVersionShort string
-	RedisPass       string
+	IncludeWWW      bool
 	NetworkName     string
 }
 
@@ -33,6 +33,7 @@ func RenderTraefikConfig(email string) (string, error) {
 
 func RenderSiteCompose(data SiteTemplateData) (string, error) {
 	data.PHPVersionShort = strings.ReplaceAll(data.PHPVersion, ".", "")
+	data.IncludeWWW = strings.Count(data.Domain, ".") == 1
 	return renderFile("site/docker-compose.yml.tmpl", data)
 }
 

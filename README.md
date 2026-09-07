@@ -23,22 +23,44 @@ Mỗi website được vận hành với:
 
 ---
 
-## 2. Cài đặt nhanh
+## 2. Hướng dẫn Triển khai lên VPS mới (Từng bước chi tiết)
 
-Tải binary `ols-cli` mới nhất và cài đặt vào hệ thống:
+Bạn có thể triển khai công cụ lên bất kỳ VPS Linux mới nào (Ubuntu, Debian, AlmaLinux, RockyLinux...) theo các bước sau:
 
+### Bước 1: Chuẩn bị VPS
+Đảm bảo VPS đã cài đặt Docker và Docker Compose. Nếu dùng VPS có aaPanel, bạn chỉ cần cài Docker từ App Store của aaPanel (không cài LAMP/LNMP để tránh chiếm dụng port 80/443).
+
+### Bước 2: Tải công cụ lên VPS
+**Cách A — Copy trực tiếp từ máy tính lên VPS:**
+Từ máy tính của bạn, mở PowerShell / Terminal và copy file binary đã biên dịch sẵn lên VPS:
 ```bash
-# Cài đặt tự động
-curl -sSL https://raw.githubusercontent.com/ols-cli/ols/main/scripts/install.sh | sudo bash
+# Đối với VPS x86_64 thông dụng (Intel / AMD):
+scp bin/ols-cli-linux-amd64 root@<IP_VPS>:/usr/local/bin/ols
+
+# Hoặc đối với VPS ARM (Oracle Ampere, AWS Graviton):
+scp bin/ols-cli-linux-arm64 root@<IP_VPS>:/usr/local/bin/ols
 ```
 
-Hoặc biên dịch trực tiếp từ mã nguồn:
+**Cách B — Tải lên qua giao diện File Manager của aaPanel:**
+1. Mở aaPanel > **Files** > đi đến thư mục `/usr/local/bin`.
+2. Bấm **Upload** file `bin/ols-cli-linux-amd64` từ máy tính lên.
+3. Đổi tên file vừa tải lên thành **`ols`**.
+
+### Bước 3: Cấp quyền thực thi và khởi tạo hạ tầng
+Đăng nhập SSH vào VPS bằng tài khoản root:
 ```bash
-git clone https://github.com/ols-cli/ols.git
-cd ols
-make build-linux
-sudo cp bin/ols-cli-linux-amd64 /usr/local/bin/ols-cli
-sudo chmod +x /usr/local/bin/ols-cli
+# 1. Cấp quyền thực thi và tạo alias
+chmod +x /usr/local/bin/ols
+ln -sf /usr/local/bin/ols /usr/local/bin/ols-cli
+
+# 2. Khởi tạo toàn bộ hạ tầng VPS (Traefik, MariaDB 11.4, Shared Redis, Docker Network)
+ols init --email email-cua-ban@gmail.com
+```
+
+### Bước 4: Bắt đầu sử dụng qua Menu trực quan
+Gõ lệnh sau để mở giao diện quản lý:
+```bash
+ols
 ```
 
 ---
@@ -46,10 +68,10 @@ sudo chmod +x /usr/local/bin/ols-cli
 ## 3. Hướng dẫn Sử dụng
 
 ### 3.1. Giao diện Menu tương tác (Khuyến nghị sử dụng)
-Chỉ cần gõ **`ols`** (hoặc `ols menu`), toàn bộ chức năng sẽ hiển thị trực quan dưới dạng menu số để bạn lựa chọn thao tác nhanh mà không cần nhớ câu lệnh:
+Chỉ cần gõ **`ols`** (hoặc `ols menu`), toàn bộ chức năng sẽ hiển thị trực quan dưới dạng menu số để bạn thao tác nhanh:
 
 ```bash
-sudo ols
+ols
 ```
 
 ```text
@@ -75,87 +97,103 @@ sudo ols
 ### 3.2. Chế độ dòng lệnh (CLI - Dùng cho Script tự động hóa)
 
 #### Khởi tạo Hạ tầng VPS (`init`)
-Chạy lệnh này một lần duy nhất khi vừa thiết lập VPS:
 ```bash
-sudo ols-cli init --email your-email@example.com
+ols init --email your-email@example.com
 ```
-Lệnh này sẽ:
-* Tạo cấu trúc thư mục chuẩn tại `/opt/ols/`
-* Khởi tạo mạng Docker `ols-network`
-* Tự sinh mật khẩu root MariaDB an toàn lưu tại `/opt/ols/config/ols.yaml`
-* Khởi chạy Traefik v3 Reverse Proxy và Shared MariaDB 11.x
-
-### 3.2. Quản lý Website
 
 #### Tạo website WordPress mới
 ```bash
-# Tạo site với cấu hình mặc định (PHP 8.2 + Redis + WordPress)
-sudo ols-cli site create example.com
+# Tạo site với cấu hình mặc định (PHP 8.2 + WordPress)
+ols site create example.com
 
-# Tạo site với phiên bản PHP tùy chọn
-sudo ols-cli site create myblog.vn --php 8.3 --redis=true
+# Tạo site với phiên bản PHP tùy chọn (hỗ trợ 8.1, 8.2, 8.3)
+ols site create myblog.vn --php 8.3
 ```
 
 #### Liệt kê danh sách website
 ```bash
-sudo ols-cli site list
+ols site list
 ```
 
-#### Khởi động lại hoặc tắt/bật website
+#### Khởi động lại website
 ```bash
-sudo ols-cli site restart example.com
+ols site restart example.com
 ```
 
 #### Xóa website
 ```bash
-sudo ols-cli site delete example.com --force
+ols site delete example.com --force
 ```
 
-### 3.3. Sao lưu & Khôi phục (Backup & Restore)
-
-#### Sao lưu website
+#### Sao lưu website (Backup)
 ```bash
-sudo ols-cli backup example.com
-# File sao lưu được lưu tại: /opt/ols/backups/example.com/YYYYMMDD_HHMMSS_example.com.tar.gz
+ols backup example.com
+# File sao lưu lưu tại: /opt/ols/backups/example.com/YYYYMMDD_HHMMSS_example.com.tar.gz
 ```
 
-#### Khôi phục website
+#### Khôi phục website (Restore)
 ```bash
-sudo ols-cli restore example.com /opt/ols/backups/example.com/20260907_143000_example.com.tar.gz
+ols restore example.com /opt/ols/backups/example.com/20260907_143000_example.com.tar.gz
 ```
 
-### 3.4. Quản trị Database qua phpMyAdmin
+#### Quản trị Database qua phpMyAdmin
 ```bash
 # Bật phpMyAdmin trên port 8080
-sudo ols-cli pma enable --port 8080
+ols pma enable --port 8080
 
 # Tắt phpMyAdmin khi không sử dụng để tiết kiệm RAM
-sudo ols-cli pma disable
+ols pma disable
 ```
 
 ---
 
-## 4. Cấu trúc Thư mục Hệ thống
+## 4. Tính Cô Lập & Bảo Mật Giữa Các Website (Isolation Security)
+
+Hệ thống được thiết kế theo mô hình **Multi-Tenant Isolation** đạt chuẩn an toàn cao:
+
+1. **Cô lập Tiến trình & Container (Process Isolation):**
+   * Mỗi website chạy trong một Docker container OpenLiteSpeed hoàn toàn độc lập (`ols_<slug>`).
+   * Nếu một website bị lỗi PHP fatal, crash, hoặc bị tấn công ddos/malware, tiến trình chỉ dừng lại trong phạm vi container đó, hoàn toàn không làm gián đoạn các website khác trên máy chủ.
+
+2. **Cô lập Hệ thống Tệp (Filesystem Isolation):**
+   * Mỗi container chỉ mount duy nhất thư mục web của chính nó: `/opt/ols/sites/<domain>/html`.
+   * Nhờ cơ chế Linux Mount Namespaces của Docker, website A **tuyệt đối không thể đọc hay can thiệp** vào mã nguồn, tệp tin của website B.
+
+3. **Cô lập Cơ sở Dữ liệu (Database Isolation):**
+   * Sử dụng MariaDB 11.4 tập trung, nhưng mỗi website sở hữu một Database riêng (`wp_<slug>`) và một User riêng (`usr_<slug>`).
+   * Phân quyền nghiêm ngặt: `GRANT ALL ON wp_<slug>.* TO 'usr_<slug>'@'%'`. User của site A hoàn toàn không có quyền truy cập hay đọc dữ liệu của site B. Mật khẩu được sinh ngẫu nhiên 32 ký tự bảo mật cao.
+
+4. **Cô lập Bộ nhớ Đệm Redis (Object Cache Isolation):**
+   * Sử dụng cụm Redis 7 dùng chung (`ols-redis`) với cấu hình bộ nhớ LRU an toàn.
+   * Mỗi website được gán tiền tố key riêng biệt thông qua `define('WP_CACHE_KEY_SALT', '<slug>:')` trong `wp-config.php`, ngăn chặn hoàn toàn việc nhầm lẫn hoặc đè cache giữa các website.
+
+5. **Phân quyền người dùng an toàn (Least Privilege):**
+   * Bên trong container, OpenLiteSpeed thực thi dưới tài khoản hệ thống `nobody:nogroup` (UID `65534`). Không chạy mã PHP dưới quyền `root`, triệt tiêu nguy cơ chiếm quyền điều khiển VPS từ mã nguồn WordPress.
+
+---
+
+## 5. Cấu trúc Thư mục Hệ thống
 ```text
 /opt/ols/
 ├── bin/
-│   └── ols-cli                       # Binary CLI
+│   └── ols                           # Binary CLI
 ├── config/
-│   └── ols.yaml                      # Cấu hình chung VPS
+│   └── ols.yaml                      # Cấu hình hệ thống & mật khẩu root MariaDB
 ├── core/
-│   ├── docker-compose.yml            # Traefik + MariaDB
-│   ├── traefik/                      # SSL Let's Encrypt acme.json
+│   ├── docker-compose.yml            # Traefik v3 + MariaDB 11.4 + Redis 7
+│   ├── traefik/                      # Cấu hình SSL Let's Encrypt acme.json
 │   └── mariadb/                      # Dữ liệu MariaDB
 ├── sites/
 │   └── example.com/
-│       ├── docker-compose.yml        # Stack OLS + Redis của website
-│       ├── ols/conf/vhost.conf       # Cấu hình OpenLiteSpeed vhost & rewrite rules
-│       └── html/                     # Document root WordPress (chown 1001:1001)
+│       ├── docker-compose.yml        # Container OpenLiteSpeed độc lập
+│       ├── ols/conf/vhost.conf       # Cấu hình Virtual Host & WordPress Rewrite Rules
+│       ├── logs/                     # Access log và Error log riêng của site
+│       └── html/                     # Document root WordPress (chown nobody 65534:65534)
 └── backups/
-    └── example.com/                  # Các bản sao lưu nén tar.gz
+    └── example.com/                  # Các bản sao lưu nén tar.gz (mã nguồn + database)
 ```
 
 ---
 
-## 5. Giấy phép
+## 6. Giấy phép
 Dự án được phát hành theo giấy phép [MIT](LICENSE).

@@ -37,3 +37,11 @@ END_rules
 module cache {
   ls_enabled              1
 }
+
+phpIniOverride  {
+  php_value upload_max_filesize 256M
+  php_value post_max_size 256M
+  php_value memory_limit 512M
+  php_value max_execution_time 300
+  php_value max_input_time 300
+}

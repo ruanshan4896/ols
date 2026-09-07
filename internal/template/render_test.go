@@ -10,7 +10,6 @@ func TestRenderSiteCompose(t *testing.T) {
 		Domain:      "myblog.com",
 		DomainSlug:  "myblog_com",
 		PHPVersion:  "8.2",
-		RedisPass:   "pass123",
 		NetworkName: "ols-network",
 	}
 
@@ -22,7 +21,7 @@ func TestRenderSiteCompose(t *testing.T) {
 	if !strings.Contains(out, "ols_myblog_com") {
 		t.Errorf("expected container name ols_myblog_com in output, got: %s", out)
 	}
-	if !strings.Contains(out, "Host(`myblog.com`)") {
+	if !strings.Contains(out, "Host(`myblog.com`) || Host(`www.myblog.com`)") {
 		t.Errorf("expected traefik host rule in output, got: %s", out)
 	}
 	if !strings.Contains(out, "litespeedtech/openlitespeed:1.8.2-lsphp82") {

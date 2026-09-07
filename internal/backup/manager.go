@@ -40,12 +40,14 @@ func (b *BackupManager) BackupSite(domain string) (string, error) {
 	slug := site.DomainToSlug(domain)
 	dbName := "wp_" + slug
 
-	// 1. Xuất database qua container MariaDB
+	// 1. Xuất database qua container MariaDB bằng streaming trực tiếp ra file
 	sqlDumpPath := filepath.Join(siteDir, "database.sql")
-	dumpCmd := fmt.Sprintf("mariadb-dump -uroot -p%s %s > /tmp/dump.sql && cat /tmp/dump.sql", b.cfg.DBRootPassword, dbName)
-	sqlContent, err := b.dm.ExecInContainer("ols-mariadb", "sh", "-c", dumpCmd)
-	if err == nil && len(sqlContent) > 0 {
-		_ = os.WriteFile(sqlDumpPath, []byte(sqlContent), 0644)
+	dumpFile, errCreate := os.Create(sqlDumpPath)
+	if errCreate == nil {
+		dumpCmd := exec.Command("docker", "exec", "ols-mariadb", "mariadb-dump", "-uroot", "-p"+b.cfg.DBRootPassword, dbName)
+		dumpCmd.Stdout = dumpFile
+		_ = dumpCmd.Run()
+		dumpFile.Close()
 	}
 
 	// 2. Tạo file tar.gz
@@ -140,13 +142,16 @@ func (b *BackupManager) RestoreSite(domain string, backupFile string) error {
 
 	slug := site.DomainToSlug(domain)
 
-	// 1. Nếu có database.sql, nạp vào MariaDB
+	// 1. Nếu có database.sql, nạp vào MariaDB bằng streaming stdin (hỗ trợ DB dung lượng lớn)
 	sqlDumpPath := filepath.Join(siteDir, "database.sql")
 	if _, err := os.Stat(sqlDumpPath); err == nil {
 		dbName := "wp_" + slug
-		sqlContent, readErr := os.ReadFile(sqlDumpPath)
-		if readErr == nil && len(sqlContent) > 0 {
-			_, _ = b.dm.ExecInContainer("ols-mariadb", "sh", "-c", fmt.Sprintf("mariadb -uroot -p%s %s << 'EOF'\n%s\nEOF", b.cfg.DBRootPassword, dbName, string(sqlContent)))
+		sqlFile, errOpen := os.Open(sqlDumpPath)
+		if errOpen == nil {
+			importCmd := exec.Command("docker", "exec", "-i", "ols-mariadb", "mariadb", "-uroot", "-p"+b.cfg.DBRootPassword, dbName)
+			importCmd.Stdin = sqlFile
+			_ = importCmd.Run()
+			sqlFile.Close()
 		}
 		_ = os.Remove(sqlDumpPath)
 	}

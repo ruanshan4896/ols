@@ -13,10 +13,10 @@ services:
     labels:
       - "traefik.enable=true"
       # Router HTTP (Truy cập tức thì trên cổng 80)
-      - "traefik.http.routers.{{ .DomainSlug }}-http.rule=Host(`{{ .Domain }}`) || Host(`www.{{ .Domain }}`)"
+      - "traefik.http.routers.{{ .DomainSlug }}-http.rule=Host(`{{ .Domain }}`){{ if .IncludeWWW }} || Host(`www.{{ .Domain }}`){{ end }}"
       - "traefik.http.routers.{{ .DomainSlug }}-http.entrypoints=web"
       # Router HTTPS (Tự động cấp chứng chỉ SSL Let's Encrypt trên cổng 443)
-      - "traefik.http.routers.{{ .DomainSlug }}.rule=Host(`{{ .Domain }}`) || Host(`www.{{ .Domain }}`)"
+      - "traefik.http.routers.{{ .DomainSlug }}.rule=Host(`{{ .Domain }}`){{ if .IncludeWWW }} || Host(`www.{{ .Domain }}`){{ end }}"
       - "traefik.http.routers.{{ .DomainSlug }}.entrypoints=websecure"
       - "traefik.http.routers.{{ .DomainSlug }}.tls.certresolver=letsencrypt"
       - "traefik.http.services.{{ .DomainSlug }}.loadbalancer.server.port=8088"

@@ -449,8 +449,8 @@ func (m *Manager) GetSiteRedisDB(domain string) int {
 	}
 	for i, s := range sites {
 		if s.Domain == domain {
-			return i % 16
+			return i % 256
 		}
 	}
-	return len(sites) % 16
+	return len(sites) % 256
 }

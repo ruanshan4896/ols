@@ -19,7 +19,7 @@ services:
       - "traefik.http.routers.{{ .DomainSlug }}.rule=Host(`{{ .Domain }}`) || Host(`www.{{ .Domain }}`)"
       - "traefik.http.routers.{{ .DomainSlug }}.entrypoints=websecure"
       - "traefik.http.routers.{{ .DomainSlug }}.tls.certresolver=letsencrypt"
-      - "traefik.http.services.{{ .DomainSlug }}.loadbalancer.server.port=80"
+      - "traefik.http.services.{{ .DomainSlug }}.loadbalancer.server.port=8088"
     depends_on:
       - redis
 

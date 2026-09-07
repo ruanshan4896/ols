@@ -45,7 +45,36 @@ sudo chmod +x /usr/local/bin/ols-cli
 
 ## 3. Hướng dẫn Sử dụng
 
-### 3.1. Khởi tạo Hạ tầng VPS (`init`)
+### 3.1. Giao diện Menu tương tác (Khuyến nghị sử dụng)
+Chỉ cần gõ **`ols`** (hoặc `ols menu`), toàn bộ chức năng sẽ hiển thị trực quan dưới dạng menu số để bạn lựa chọn thao tác nhanh mà không cần nhớ câu lệnh:
+
+```bash
+sudo ols
+```
+
+```text
+==================================================================
+      HỆ THỐNG QUẢN TRỊ WORDPRESS & OPENLITESPEED (OLS-CLI)
+==================================================================
+  [1] Khởi tạo hạ tầng máy chủ VPS (Traefik, MariaDB, Redis, SSL)
+  [2] Thêm website WordPress mới (Tự động tải mã nguồn & cấu hình)
+  [3] Xem danh sách website đang chạy
+  [4] Khởi động lại website (Restart)
+  [5] Xóa website
+  [6] Sao lưu website (Backup)
+  [7] Khôi phục website từ bản sao lưu (Restore)
+  [8] Quản trị Database phpMyAdmin (Bật / Tắt)
+  [9] Kiểm tra trạng thái các container Docker
+  [0] Thoát
+==================================================================
+👉 Nhập lựa chọn của bạn [0-9]: 
+```
+
+---
+
+### 3.2. Chế độ dòng lệnh (CLI - Dùng cho Script tự động hóa)
+
+#### Khởi tạo Hạ tầng VPS (`init`)
 Chạy lệnh này một lần duy nhất khi vừa thiết lập VPS:
 ```bash
 sudo ols-cli init --email your-email@example.com

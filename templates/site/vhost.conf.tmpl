@@ -4,7 +4,7 @@ enableBr                  1
 
 errorlog $VH_ROOT/logs/error.log {
   useServer               1
-  logLevel                DEBUG
+  logLevel                ERROR
   rollingSize             10M
 }
 
@@ -39,14 +39,14 @@ module cache {
 }
 
 phpIniOverride  {
-  php_value upload_max_filesize 256M
-  php_value post_max_size 256M
-  php_value memory_limit 512M
-  php_value max_execution_time 300
-  php_value max_input_time 300
+  php_value upload_max_filesize 128M
+  php_value post_max_size 128M
+  php_value memory_limit 128M
+  php_value max_execution_time 120
+  php_value max_input_time 120
   php_admin_value opcache.enable 1
-  php_admin_value opcache.memory_consumption 128
-  php_admin_value opcache.interned_strings_buffer 16
-  php_admin_value opcache.max_accelerated_files 10000
+  php_admin_value opcache.memory_consumption 48
+  php_admin_value opcache.interned_strings_buffer 8
+  php_admin_value opcache.max_accelerated_files 4000
   php_admin_value opcache.revalidate_freq 2
 }

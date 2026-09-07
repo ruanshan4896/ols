@@ -5,6 +5,10 @@ services:
     restart: always
     environment:
       - TZ=Asia/Ho_Chi_Minh
+      - PHP_LSAPI_CHILDREN=5
+      - PHP_LSAPI_MAX_IDLE_CHILDREN=1
+      - LSAPI_AVOID_FORK=0
+    mem_limit: 256m
     volumes:
       - ./html:/usr/local/lsws/Example/html
       - ./ols/conf/vhost.conf:/usr/local/lsws/conf/vhosts/Example/vhconf.conf

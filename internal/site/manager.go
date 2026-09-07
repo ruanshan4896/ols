@@ -136,7 +136,10 @@ func (m *Manager) CreateSite(opts CreateSiteOptions) (err error) {
 			salts[i] = s
 		}
 
-		// Tạo wp-config.php với FS_METHOD direct (loại bỏ đòi FTP) và kết nối Shared Redis
+		// Cấp phát tự động Redis Database ID độc quyền cho site (0 - 15)
+		redisDB := m.GetSiteRedisDB(opts.Domain)
+
+		// Tạo wp-config.php với FS_METHOD direct và cấu hình cách ly Redis độc quyền
 		wpConfig := fmt.Sprintf(`<?php
 define( 'DB_NAME', '%s' );
 define( 'DB_USER', '%s' );
@@ -152,15 +155,19 @@ define( 'WP_DEBUG', false );
 // Khắc phục triệt để lỗi hỏi FTP khi cài/cập nhật plugin & theme
 define( 'FS_METHOD', 'direct' );
 
-// Cấu hình cách ly tuyệt đối Redis Object Cache cho LiteSpeed Cache (LSCWP)
-define( 'LSOC_PREFIX', '%s:' );
+// Tự động cấu hình & cách ly tuyệt đối Redis Object Cache cho LiteSpeed Cache
 define( 'LITESPEED_CONF', true );
-define( 'LITESPEED_CONF__OBJECT__HOST', 'ols-redis' );
-define( 'LITESPEED_CONF__OBJECT__PORT', 6379 );
+define( 'LITESPEED_CONF__CACHE__OBJECT', true );
+define( 'LITESPEED_CONF__CACHE__OBJECT_KIND', 2 ); // 2 = Redis
+define( 'LITESPEED_CONF__CACHE__OBJECT_HOST', 'ols-redis' );
+define( 'LITESPEED_CONF__CACHE__OBJECT_PORT', 6379 );
+define( 'LITESPEED_CONF__CACHE__OBJECT_DB_ID', %d );
+define( 'LSOC_PREFIX', '%s:' );
 
 // Cấu hình cách ly cho plugin Redis Object Cache & WordPress Core
 define( 'WP_REDIS_HOST', 'ols-redis' );
 define( 'WP_REDIS_PORT', 6379 );
+define( 'WP_REDIS_DATABASE', %d );
 define( 'WP_REDIS_PREFIX', '%s:' );
 define( 'WP_CACHE_KEY_SALT', '%s:' );
 define( 'WP_CACHE', true );
@@ -179,7 +186,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	define( 'ABSPATH', __DIR__ . '/' );
 }
 require_once ABSPATH . 'wp-settings.php';
-`, dbName, dbUser, dbPass, slug, slug, slug, salts[0], salts[1], salts[2], salts[3], salts[4], salts[5], salts[6], salts[7])
+`, dbName, dbUser, dbPass, redisDB, slug, redisDB, slug, slug, salts[0], salts[1], salts[2], salts[3], salts[4], salts[5], salts[6], salts[7])
 
 		if err = os.WriteFile(filepath.Join(htmlDir, "wp-config.php"), []byte(wpConfig), 0644); err != nil {
 			return fmt.Errorf("tạo wp-config.php: %w", err)
@@ -368,20 +375,41 @@ RewriteRule . /index.php [L]
 	_ = os.MkdirAll(filepath.Join(wpContentDir, "plugins"), 0777)
 	_ = exec.Command("chmod", "-R", "777", wpContentDir).Run()
 
-	// 6. Tự động đồng bộ tiền tố cách ly Redis (LSOC_PREFIX) vào wp-config.php nếu thiếu
+	// 6. Tự động đồng bộ và cấu hình cách ly tuyệt đối Redis vào wp-config.php
+	redisDB := m.GetSiteRedisDB(domain)
 	wpConfigPath := filepath.Join(htmlDir, "wp-config.php")
 	if configBytes, err := os.ReadFile(wpConfigPath); err == nil {
 		configStr := string(configBytes)
-		if !strings.Contains(configStr, "LSOC_PREFIX") {
-			redisDirectives := fmt.Sprintf("\n// Cấu hình cách ly Redis Object Cache độc quyền cho LiteSpeed Cache\ndefine( 'LSOC_PREFIX', '%s:' );\ndefine( 'WP_REDIS_PREFIX', '%s:' );\n", slug, slug)
+		if !strings.Contains(configStr, "LITESPEED_CONF__CACHE__OBJECT_DB_ID") {
+			redisDirectives := fmt.Sprintf(`
+// Tự động cấu hình & cách ly tuyệt đối Redis Object Cache (ols-cli)
+define( 'LITESPEED_CONF', true );
+define( 'LITESPEED_CONF__CACHE__OBJECT', true );
+define( 'LITESPEED_CONF__CACHE__OBJECT_KIND', 2 );
+define( 'LITESPEED_CONF__CACHE__OBJECT_HOST', 'ols-redis' );
+define( 'LITESPEED_CONF__CACHE__OBJECT_PORT', 6379 );
+define( 'LITESPEED_CONF__CACHE__OBJECT_DB_ID', %d );
+define( 'LSOC_PREFIX', '%s:' );
+
+define( 'WP_REDIS_HOST', 'ols-redis' );
+define( 'WP_REDIS_PORT', 6379 );
+define( 'WP_REDIS_DATABASE', %d );
+define( 'WP_REDIS_PREFIX', '%s:' );
+define( 'WP_CACHE_KEY_SALT', '%s:' );
+define( 'WP_CACHE', true );
+`, redisDB, slug, redisDB, slug, slug)
+
 			if idx := strings.Index(configStr, "require_once ABSPATH"); idx != -1 {
-				newConfig := configStr[:idx] + redisDirectives + configStr[idx:]
+				newConfig := configStr[:idx] + redisDirectives + "\n" + configStr[idx:]
 				_ = os.WriteFile(wpConfigPath, []byte(newConfig), 0644)
 			}
 		}
 	}
 
-	// 7. Tái khởi động lại container để nạp cấu hình mới
+	// 7. Tự động xóa sạch toàn bộ cache cũ đang bị lẫn lộn trên Redis
+	_, _ = m.dm.ExecInContainer("ols-redis", "redis-cli", "FLUSHALL")
+
+	// 8. Tái khởi động lại container để nạp cấu hình mới
 	_ = m.dm.ComposeUp(siteDir)
 
 	// 7. Cài đặt các extension tối ưu hóa chạy ngầm nếu chưa có
@@ -412,4 +440,17 @@ func (m *Manager) SyncAllSites() ([]string, []error) {
 		}
 	}
 	return synced, errs
+}
+
+func (m *Manager) GetSiteRedisDB(domain string) int {
+	sites, err := m.ListSites()
+	if err != nil || len(sites) == 0 {
+		return 0
+	}
+	for i, s := range sites {
+		if s.Domain == domain {
+			return i % 16
+		}
+	}
+	return len(sites) % 16
 }

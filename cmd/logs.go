@@ -12,6 +12,7 @@ import (
 var (
 	logsLines int
 	logsScan  bool
+	logsClear bool
 )
 
 var logsCmd = &cobra.Command{
@@ -20,8 +21,13 @@ var logsCmd = &cobra.Command{
 	Example: `  ols logs traefik
   ols logs mariadb -n 100
   ols logs example.com
-  ols logs --scan`,
+  ols logs --scan
+  ols logs --clear`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if logsClear || (len(args) > 0 && (args[0] == "clear" || args[0] == "clean")) {
+			return RunClearAllLogs()
+		}
+
 		if logsScan || (len(args) > 0 && args[0] == "scan") {
 			return RunQuickErrorScan(logsLines)
 		}
@@ -92,8 +98,26 @@ func RunQuickErrorScan(lines int) error {
 	return nil
 }
 
+func RunClearAllLogs() error {
+	color.Cyan("-> Đang tiến hành dọn sạch toàn bộ log cũ trên hệ thống...")
+	count, bytesFreed, err := system.ClearAllLogs()
+	if err != nil {
+		return fmt.Errorf("lỗi khi xóa log: %w", err)
+	}
+
+	freedMB := float64(bytesFreed) / (1024 * 1024)
+	color.Green("✓ Đã xóa sạch toàn bộ nhật ký của %d container!", count)
+	if freedMB > 0 {
+		color.Green("  (Giải phóng thành công %.2f MB dung lượng ổ cứng)", freedMB)
+	} else {
+		color.Green("  (Tất cả file log đã được reset về 0 byte)")
+	}
+	return nil
+}
+
 func init() {
 	logsCmd.Flags().IntVarP(&logsLines, "lines", "n", 50, "Số dòng log cần xem (mặc định 50)")
 	logsCmd.Flags().BoolVarP(&logsScan, "scan", "s", false, "Quét nhanh các dòng lỗi trên toàn hệ thống")
+	logsCmd.Flags().BoolVarP(&logsClear, "clear", "c", false, "Xóa sạch toàn bộ log cũ của các container")
 	RootCmd.AddCommand(logsCmd)
 }

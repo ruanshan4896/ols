@@ -223,6 +223,9 @@ ols logs redis
 
 # Xem lỗi PHP Fatal / 500 của một website cụ thể (tùy chọn -n số dòng)
 ols logs example.com -n 100
+
+# Xóa sạch toàn bộ log cũ của các container và website, reset về 0 byte
+ols logs --clear
 ```
 
 ---

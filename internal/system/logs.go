@@ -2,6 +2,7 @@ package system
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -127,4 +128,50 @@ func ScanAllErrors(linesPerTarget int) ([]ErrorLogEntry, error) {
 	}
 
 	return allErrors, nil
+}
+
+// ClearAllLogs làm sạch an toàn toàn bộ log của tất cả container Docker và OpenLiteSpeed
+func ClearAllLogs() (int, int64, error) {
+	out, err := exec.Command("docker", "ps", "-a", "--format", "{{.ID}}").CombinedOutput()
+	if err != nil {
+		return 0, 0, fmt.Errorf("không thể lấy danh sách container: %w", err)
+	}
+
+	containerIDs := strings.Fields(string(out))
+	clearedCount := 0
+	var totalBytesFreed int64
+
+	for _, cid := range containerIDs {
+		pathOut, err := exec.Command("docker", "inspect", "--format={{.LogPath}}", cid).CombinedOutput()
+		if err == nil {
+			logPath := strings.TrimSpace(string(pathOut))
+			if logPath != "" && logPath != "<no value>" {
+				if fi, err := os.Stat(logPath); err == nil {
+					size := fi.Size()
+					if size > 0 {
+						if truncErr := os.Truncate(logPath, 0); truncErr == nil {
+							clearedCount++
+							totalBytesFreed += size
+						} else {
+							_ = exec.Command("truncate", "-s", "0", logPath).Run()
+							clearedCount++
+							totalBytesFreed += size
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Xóa log nội bộ trong các container OpenLiteSpeed
+	psRunning, _ := exec.Command("docker", "ps", "--format", "{{.Names}}").CombinedOutput()
+	names := strings.Split(strings.TrimSpace(string(psRunning)), "\n")
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if strings.HasPrefix(name, "ols_") && !strings.HasPrefix(name, "ols-") {
+			_ = exec.Command("docker", "exec", name, "sh", "-c", "truncate -s 0 /usr/local/lsws/Example/logs/*.log 2>/dev/null || true").Run()
+		}
+	}
+
+	return clearedCount, totalBytesFreed, nil
 }

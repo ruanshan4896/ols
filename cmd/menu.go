@@ -620,10 +620,11 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 		fmt.Println("  [3] Redis Cache (Lỗi bộ nhớ đệm, connection refused)")
 		fmt.Println("  [4] Xem lỗi của một Website cụ thể (PHP Fatal, 500, lỗi plugin)")
 		fmt.Println("  [5] ⚡ QUÉT NHANH TOÀN HỆ THỐNG (Tự động lọc các lỗi gần nhất)")
+		fmt.Println("  [6] 🗑️  XÓA TOÀN BỘ NHẬT KÝ CŨ (Reset log Docker & Web về 0 byte)")
 		fmt.Println("  [0] Quay lại")
 		fmt.Println()
 
-		subChoice := readInput(reader, "👉 Nhập lựa chọn của bạn [0-5]", "5")
+		subChoice := readInput(reader, "👉 Nhập lựa chọn của bạn [0-6]", "5")
 		switch subChoice {
 		case "1":
 			_ = PrintContainerLog("ols-traefik", "Traefik SSL/Proxy", 60)
@@ -644,6 +645,13 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 			}
 		case "5":
 			_ = RunQuickErrorScan(50)
+		case "6":
+			confirm := readInput(reader, "Bạn có chắc chắn muốn xóa sạch toàn bộ log của tất cả container? (y/N)", "N")
+			if strings.ToLower(confirm) == "y" {
+				_ = RunClearAllLogs()
+			} else {
+				color.Cyan("Đã hủy thao tác.")
+			}
 		default:
 			color.Cyan("Đã quay lại menu chính.")
 		}

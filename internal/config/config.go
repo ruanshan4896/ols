@@ -12,16 +12,32 @@ type Config struct {
 	SystemDir      string `yaml:"system_dir"`
 	ACMEEmail      string `yaml:"acme_email"`
 	DBRootPassword string `yaml:"db_root_password"`
-	DefaultPHP     string `yaml:"default_php"`
-	NetworkName    string `yaml:"network_name"`
+	DefaultPHP         string `yaml:"default_php"`
+	NetworkName        string `yaml:"network_name"`
+	BackendNetworkName string `yaml:"backend_network_name,omitempty"`
 }
 
 func DefaultConfig() *Config {
 	return &Config{
-		SystemDir:   "/opt/ols",
-		DefaultPHP:  "8.2",
-		NetworkName: "ols-network",
+		SystemDir:          "/opt/ols",
+		DefaultPHP:         "8.2",
+		NetworkName:        "ols-network",
+		BackendNetworkName: "ols-backend-network",
 	}
+}
+
+func (c *Config) GetFrontendNetwork() string {
+	if c.NetworkName != "" {
+		return c.NetworkName
+	}
+	return "ols-network"
+}
+
+func (c *Config) GetBackendNetwork() string {
+	if c.BackendNetworkName != "" {
+		return c.BackendNetworkName
+	}
+	return "ols-backend-network"
 }
 
 func LoadConfig(path string) (*Config, error) {

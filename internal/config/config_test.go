@@ -31,4 +31,10 @@ func TestConfigLoadSave(t *testing.T) {
 	if loaded.SystemDir != "/opt/ols" {
 		t.Errorf("expected system dir /opt/ols, got %s", loaded.SystemDir)
 	}
+	if loaded.GetFrontendNetwork() != "ols-network" {
+		t.Errorf("expected frontend network ols-network, got %s", loaded.GetFrontendNetwork())
+	}
+	if loaded.GetBackendNetwork() != "ols-backend-network" {
+		t.Errorf("expected backend network ols-backend-network, got %s", loaded.GetBackendNetwork())
+	}
 }

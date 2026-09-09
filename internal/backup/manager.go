@@ -8,10 +8,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"time"
 
 	"github.com/ols-cli/ols/internal/config"
 	"github.com/ols-cli/ols/internal/docker"
+	"github.com/ols-cli/ols/internal/mariadb"
 	"github.com/ols-cli/ols/internal/site"
 )
 
@@ -101,6 +103,38 @@ func (b *BackupManager) BackupSite(domain string) (string, error) {
 	return tarPath, nil
 }
 
+// BackupAllSitesProgress sao lưu toàn bộ website trên hệ thống với tiến trình thời gian thực
+func (b *BackupManager) BackupAllSitesProgress(progressFn func(current, total int, domain, backupPath string, err error)) ([]string, []error) {
+	siteMgr := site.NewManager(b.cfg)
+	sites, err := siteMgr.ListSites()
+	if err != nil {
+		return nil, []error{err}
+	}
+
+	var backedUp []string
+	var errs []error
+	total := len(sites)
+
+	for i, s := range sites {
+		path, backupErr := b.BackupSite(s.Domain)
+		if backupErr != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", s.Domain, backupErr))
+		} else {
+			backedUp = append(backedUp, path)
+		}
+		if progressFn != nil {
+			progressFn(i+1, total, s.Domain, path, backupErr)
+		}
+	}
+
+	return backedUp, errs
+}
+
+// BackupAllSites sao lưu toàn bộ website
+func (b *BackupManager) BackupAllSites() ([]string, []error) {
+	return b.BackupAllSitesProgress(nil)
+}
+
 func (b *BackupManager) RestoreSite(domain string, backupFile string) error {
 	siteDir := filepath.Join(b.cfg.SystemDir, "sites", domain)
 	f, err := os.Open(backupFile)
@@ -141,11 +175,40 @@ func (b *BackupManager) RestoreSite(domain string, backupFile string) error {
 	}
 
 	slug := site.DomainToSlug(domain)
+	htmlDir := filepath.Join(siteDir, "html")
 
-	// 1. Nếu có database.sql, nạp vào MariaDB bằng streaming stdin (hỗ trợ DB dung lượng lớn)
+	// 1. Phục hồi / Khởi tạo Database & User trong MariaDB
+	dbName := "wp_" + slug
+	dbUser := "usr_" + slug
+	dbPass := ""
+
+	// Trích xuất DB_PASSWORD từ wp-config.php nếu có
+	wpConfigPath := filepath.Join(htmlDir, "wp-config.php")
+	if wpConfigBytes, err := os.ReadFile(wpConfigPath); err == nil {
+		wpConfigStr := string(wpConfigBytes)
+		rePass := regexp.MustCompile(`define\(\s*['"]DB_PASSWORD['"]\s*,\s*['"]([^'"]+)['"]\s*\)`)
+		if matches := rePass.FindStringSubmatch(wpConfigStr); len(matches) > 1 {
+			dbPass = matches[1]
+		}
+		reUser := regexp.MustCompile(`define\(\s*['"]DB_USER['"]\s*,\s*['"]([^'"]+)['"]\s*\)`)
+		if matches := reUser.FindStringSubmatch(wpConfigStr); len(matches) > 1 {
+			dbUser = matches[1]
+		}
+		reDB := regexp.MustCompile(`define\(\s*['"]DB_NAME['"]\s*,\s*['"]([^'"]+)['"]\s*\)`)
+		if matches := reDB.FindStringSubmatch(wpConfigStr); len(matches) > 1 {
+			dbName = matches[1]
+		}
+	}
+
+	// Đảm bảo Database và User luôn tồn tại và có quyền truy cập
+	if dbPass != "" {
+		dbClient := mariadb.NewContainerClient("ols-mariadb", b.cfg.DBRootPassword)
+		_ = dbClient.CreateDatabaseAndUser(dbName, dbUser, dbPass)
+	}
+
+	// 2. Nếu có database.sql, nạp vào MariaDB bằng streaming stdin (hỗ trợ DB dung lượng lớn)
 	sqlDumpPath := filepath.Join(siteDir, "database.sql")
 	if _, err := os.Stat(sqlDumpPath); err == nil {
-		dbName := "wp_" + slug
 		sqlFile, errOpen := os.Open(sqlDumpPath)
 		if errOpen == nil {
 			importCmd := exec.Command("docker", "exec", "-i", "ols-mariadb", "mariadb", "-uroot", "-p"+b.cfg.DBRootPassword, dbName)
@@ -156,9 +219,7 @@ func (b *BackupManager) RestoreSite(domain string, backupFile string) error {
 		_ = os.Remove(sqlDumpPath)
 	}
 
-	htmlDir := filepath.Join(siteDir, "html")
-
-	// 2. Đảm bảo file .htaccess tồn tại để rewrite permalinks không bị 404
+	// 3. Đảm bảo file .htaccess tồn tại để rewrite permalinks không bị 404
 	htaccessPath := filepath.Join(htmlDir, ".htaccess")
 	if _, err := os.Stat(htaccessPath); os.IsNotExist(err) {
 		defaultHtaccess := `# BEGIN WordPress
@@ -176,7 +237,7 @@ RewriteRule . /index.php [L]
 		_ = os.WriteFile(htaccessPath, []byte(defaultHtaccess), 0664)
 	}
 
-	// 3. Phân quyền chuẩn xác cho user nobody (UID 65534) của OpenLiteSpeed
+	// 4. Phân quyền chuẩn xác cho user nobody (UID 65534) của OpenLiteSpeed
 	_ = exec.Command("chown", "-R", "65534:65534", htmlDir).Run()
 	_ = exec.Command("chmod", "-R", "775", htmlDir).Run()
 	wpContentDir := filepath.Join(htmlDir, "wp-content")
@@ -185,7 +246,8 @@ RewriteRule . /index.php [L]
 	_ = os.MkdirAll(filepath.Join(wpContentDir, "plugins"), 0777)
 	_ = exec.Command("chmod", "-R", "777", wpContentDir).Run()
 
-	// 4. Khởi động lại container OpenLiteSpeed để nạp cấu hình mới & rewrite
+	// 5. Khởi chạy stack container OpenLiteSpeed (up -d để đảm bảo tự tạo container mới nếu site từng bị xóa)
+	_ = b.dm.ComposeUp(siteDir)
 	_ = b.dm.ComposeRestart(siteDir)
 
 	return nil

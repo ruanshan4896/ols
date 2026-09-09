@@ -25,7 +25,7 @@ services:
     volumes:
       - ./mariadb/data:/var/lib/mysql
     networks:
-      - {{ .NetworkName }}
+      - {{ if .BackendNetworkName }}{{ .BackendNetworkName }}{{ else }}{{ .NetworkName }}{{ end }}
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 5s
@@ -38,8 +38,11 @@ services:
     restart: always
     command: ["redis-server", "--databases", "256", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
     networks:
-      - {{ .NetworkName }}
+      - {{ if .BackendNetworkName }}{{ .BackendNetworkName }}{{ else }}{{ .NetworkName }}{{ end }}
 
 networks:
   {{ .NetworkName }}:
     external: true
+{{ if .BackendNetworkName }}  {{ .BackendNetworkName }}:
+    external: true
+{{ end }}

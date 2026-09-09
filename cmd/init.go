@@ -21,14 +21,18 @@ var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Khởi tạo hệ thống máy chủ: Traefik, MariaDB và Docker network",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if initEmail == "" {
-			return fmt.Errorf("vui lòng cung cấp email Let's Encrypt qua flag --email")
+		cleanEmail, err := util.ValidateAndSanitizeEmail(initEmail)
+		if err != nil {
+			return fmt.Errorf("email Let's Encrypt không hợp lệ: %w", err)
+		}
+		if cleanEmail != initEmail {
+			color.Yellow("-> Đã tự động làm sạch ký tự tiếng Việt / non-ASCII trong email: %s -> %s", initEmail, cleanEmail)
 		}
 
 		color.Cyan("=== Bắt đầu khởi tạo hệ thống ols-cli ===")
 
 		cfg := config.DefaultConfig()
-		cfg.ACMEEmail = initEmail
+		cfg.ACMEEmail = cleanEmail
 
 		configPath := filepath.Join(cfg.SystemDir, "config", "ols.yaml")
 		existingCfg, err := config.LoadConfig(configPath)
@@ -79,8 +83,9 @@ var initCmd = &cobra.Command{
 
 		// 4. Render core docker-compose.yml
 		coreCompose, err := template.RenderCoreCompose(template.CoreTemplateData{
-			NetworkName:    cfg.NetworkName,
-			DBRootPassword: cfg.DBRootPassword,
+			NetworkName:        cfg.GetFrontendNetwork(),
+			BackendNetworkName: cfg.GetBackendNetwork(),
+			DBRootPassword:     cfg.DBRootPassword,
 		})
 		if err != nil {
 			return err
@@ -94,10 +99,14 @@ var initCmd = &cobra.Command{
 			return err
 		}
 
-		// 6. Khởi động Docker Network & Stack Core
+		// 6. Khởi động Docker Network (Dual-Network: Frontend & Backend) & Stack Core
 		dm := docker.NewDockerManager()
-		color.Yellow("-> Tạo mạng Docker %s...", cfg.NetworkName)
-		if err := dm.EnsureNetwork(cfg.NetworkName); err != nil {
+		color.Yellow("-> Tạo mạng Docker Frontend %s...", cfg.GetFrontendNetwork())
+		if err := dm.EnsureNetwork(cfg.GetFrontendNetwork()); err != nil {
+			return err
+		}
+		color.Yellow("-> Tạo mạng Docker Backend bảo mật %s...", cfg.GetBackendNetwork())
+		if err := dm.EnsureNetwork(cfg.GetBackendNetwork()); err != nil {
 			return err
 		}
 

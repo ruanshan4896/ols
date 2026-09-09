@@ -12,10 +12,13 @@ import (
 )
 
 var (
-	sitePHP   string
-	siteRedis bool
-	siteWP    bool
-	siteForce bool
+	sitePHP        string
+	siteRedis      bool
+	siteWP         bool
+	siteForce      bool
+	siteAdminUser  string
+	siteAdminPass  string
+	siteAdminEmail string
 )
 
 var siteCmd = &cobra.Command{
@@ -37,15 +40,22 @@ var siteCreateCmd = &cobra.Command{
 		color.Cyan("-> Đang tạo website %s...", domain)
 		mgr := site.NewManager(cfg)
 		if err := mgr.CreateSite(site.CreateSiteOptions{
-			Domain:     domain,
-			PHPVersion: sitePHP,
-			WithRedis:  siteRedis,
-			InstallWP:  siteWP,
+			Domain:        domain,
+			PHPVersion:    sitePHP,
+			WithRedis:     siteRedis,
+			InstallWP:     siteWP,
+			AdminUser:     siteAdminUser,
+			AdminPassword: siteAdminPass,
+			AdminEmail:    siteAdminEmail,
 		}); err != nil {
 			return err
 		}
 
 		color.Green("✓ Website %s đã được tạo và khởi chạy thành công!", domain)
+		if siteAdminPass != "" {
+			color.Green("  Đăng nhập quản trị: https://%s/wp-admin", domain)
+			color.Green("  Tài khoản: %s | Mật khẩu: %s", siteAdminUser, siteAdminPass)
+		}
 		return nil
 	},
 }
@@ -127,6 +137,9 @@ func init() {
 	siteCreateCmd.Flags().StringVar(&sitePHP, "php", "8.2", "Phiên bản PHP (8.1, 8.2, 8.3)")
 	siteCreateCmd.Flags().BoolVar(&siteRedis, "redis", true, "Kích hoạt Redis Object Cache riêng")
 	siteCreateCmd.Flags().BoolVar(&siteWP, "wp", true, "Tự động tải và cấu hình WordPress")
+	siteCreateCmd.Flags().StringVar(&siteAdminUser, "admin-user", "admin", "Tên tài khoản quản trị wp-admin")
+	siteCreateCmd.Flags().StringVar(&siteAdminPass, "admin-pass", "", "Mật khẩu quản trị wp-admin (tự động cài đặt hoàn chỉnh)")
+	siteCreateCmd.Flags().StringVar(&siteAdminEmail, "admin-email", "", "Email quản trị viên")
 	siteDeleteCmd.Flags().BoolVar(&siteForce, "force", false, "Xóa không cần hỏi lại")
 
 	siteCmd.AddCommand(siteCreateCmd)

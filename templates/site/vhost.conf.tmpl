@@ -1,6 +1,12 @@
 docRoot                   $VH_ROOT/html/
 enableGzip                1
 enableBr                  1
+useIpInProxyHeader        1
+
+expires  {
+  enableExpires           1
+  expiresByType           image/*=A2592000, text/css=A2592000, application/x-javascript=A2592000, application/javascript=A2592000, text/javascript=A2592000, font/*=A31536000, application/font-woff=A31536000, application/font-woff2=A31536000, application/x-font-ttf=A31536000
+}
 
 errorlog $VH_ROOT/logs/error.log {
   useServer               1
@@ -27,6 +33,11 @@ rewrite  {
   rules                   <<<END_rules
 RewriteEngine On
 RewriteBase /
+
+# Chặn brute-force bot XML-RPC và các file nhạy cảm
+RewriteRule ^(xmlrpc\.php|wp-config\.php|readme\.html|\.env|\.git) - [F,L,NC]
+
+# WordPress Permalinks
 RewriteRule ^index\.php$ - [L]
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
@@ -41,7 +52,7 @@ module cache {
 phpIniOverride  {
   php_value upload_max_filesize 128M
   php_value post_max_size 128M
-  php_value memory_limit 128M
+  php_value memory_limit 256M
   php_value max_execution_time 120
   php_value max_input_time 120
   php_admin_value opcache.enable 1

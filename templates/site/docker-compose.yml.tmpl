@@ -7,24 +7,45 @@ services:
       - TZ=Asia/Ho_Chi_Minh
       - PHP_LSAPI_CHILDREN=5
       - PHP_LSAPI_MAX_IDLE_CHILDREN=1
+      - PHP_LSAPI_MAX_IDLE=30
+      - PHP_LSAPI_MAX_REQUESTS=500
       - LSAPI_AVOID_FORK=0
-    mem_limit: 256m
+    mem_limit: 384m
+    cpu_shares: 512
     volumes:
       - ./html:/usr/local/lsws/Example/html
       - ./ols/conf/vhost.conf:/usr/local/lsws/conf/vhosts/Example/vhconf.conf
     networks:
       - {{ .NetworkName }}
-    labels:
+{{ if .BackendNetworkName }}      - {{ .BackendNetworkName }}
+{{ end }}    labels:
       - "traefik.enable=true"
-      # Router HTTP (Truy cập tức thì trên cổng 80)
+      - "traefik.docker.network={{ .NetworkName }}"
+      # Router HTTP (Tự động chuyển hướng 301 sang HTTPS)
       - "traefik.http.routers.{{ .DomainSlug }}-http.rule=Host(`{{ .Domain }}`){{ if .IncludeWWW }} || Host(`www.{{ .Domain }}`){{ end }}"
       - "traefik.http.routers.{{ .DomainSlug }}-http.entrypoints=web"
+      - "traefik.http.routers.{{ .DomainSlug }}-http.middlewares={{ .DomainSlug }}-redirect"
+      - "traefik.http.middlewares.{{ .DomainSlug }}-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.{{ .DomainSlug }}-redirect.redirectscheme.permanent=true"
       # Router HTTPS (Tự động cấp chứng chỉ SSL Let's Encrypt trên cổng 443)
       - "traefik.http.routers.{{ .DomainSlug }}.rule=Host(`{{ .Domain }}`){{ if .IncludeWWW }} || Host(`www.{{ .Domain }}`){{ end }}"
       - "traefik.http.routers.{{ .DomainSlug }}.entrypoints=websecure"
       - "traefik.http.routers.{{ .DomainSlug }}.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.{{ .DomainSlug }}.middlewares={{ .DomainSlug }}-sec-headers"
+      # Middleware Security Headers A+
+      - "traefik.http.middlewares.{{ .DomainSlug }}-sec-headers.headers.sslredirect=true"
+      - "traefik.http.middlewares.{{ .DomainSlug }}-sec-headers.headers.stsseconds=31536000"
+      - "traefik.http.middlewares.{{ .DomainSlug }}-sec-headers.headers.stsincludesubdomains=true"
+      - "traefik.http.middlewares.{{ .DomainSlug }}-sec-headers.headers.stspreload=true"
+      - "traefik.http.middlewares.{{ .DomainSlug }}-sec-headers.headers.customframeoptionsvalue=SAMEORIGIN"
+      - "traefik.http.middlewares.{{ .DomainSlug }}-sec-headers.headers.contenttypenosniff=true"
+      - "traefik.http.middlewares.{{ .DomainSlug }}-sec-headers.headers.referrerpolicy=strict-origin-when-cross-origin"
+      - "traefik.http.middlewares.{{ .DomainSlug }}-sec-headers.headers.customresponseheaders.Permissions-Policy=camera=(), microphone=(), geolocation=(), payment=(), usb=()"
       - "traefik.http.services.{{ .DomainSlug }}.loadbalancer.server.port=8088"
 
 networks:
   {{ .NetworkName }}:
     external: true
+{{ if .BackendNetworkName }}  {{ .BackendNetworkName }}:
+    external: true
+{{ end }}

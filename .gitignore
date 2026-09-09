@@ -19,3 +19,7 @@ Thumbs.db
 # Archives
 *.zip
 *.tar.gz
+
+# Network captures
+*.har
+

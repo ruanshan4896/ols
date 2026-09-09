@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os/exec"
+	"strings"
 
 	"github.com/fatih/color"
 	"github.com/ols-cli/ols/internal/config"
@@ -25,11 +26,24 @@ var pmaEnableCmd = &cobra.Command{
 			return err
 		}
 
-		color.Cyan("-> Đang khởi chạy phpMyAdmin trên port %d...", pmaPort)
+		// Xóa container cũ nếu còn tồn tại
+		_ = exec.Command("docker", "rm", "-f", "ols-pma").Run()
+
+		// Tự động nhận diện mạng Docker mà container ols-mariadb đang tham gia
+		targetNetwork := cfg.GetBackendNetwork()
+		netOut, err := exec.Command("docker", "inspect", "ols-mariadb", "--format", "{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}").Output()
+		if err == nil {
+			nets := strings.Fields(string(netOut))
+			if len(nets) > 0 {
+				targetNetwork = nets[0]
+			}
+		}
+
+		color.Cyan("-> Đang khởi chạy phpMyAdmin trên port %d (mạng: %s)...", pmaPort, targetNetwork)
 		runCmd := exec.Command("docker", "run", "-d",
 			"--name", "ols-pma",
 			"--restart", "always",
-			"--network", cfg.NetworkName,
+			"--network", targetNetwork,
 			"-p", fmt.Sprintf("%d:80", pmaPort),
 			"-e", "PMA_HOST=ols-mariadb",
 			"phpmyadmin:latest",
@@ -37,6 +51,10 @@ var pmaEnableCmd = &cobra.Command{
 		if out, err := runCmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("không thể khởi chạy phpmyadmin: %s (%w)", string(out), err)
 		}
+
+		// Nối thêm vào cả 2 mạng Frontend và Backend (nếu có) để đảm bảo thông suốt 100%
+		_ = exec.Command("docker", "network", "connect", cfg.GetBackendNetwork(), "ols-pma").Run()
+		_ = exec.Command("docker", "network", "connect", cfg.GetFrontendNetwork(), "ols-pma").Run()
 
 		color.Green("✓ phpMyAdmin đã sẵn sàng tại http://<IP_VPS>:%d", pmaPort)
 		return nil

@@ -10,17 +10,19 @@ import (
 )
 
 type CoreTemplateData struct {
-	NetworkName    string
-	DBRootPassword string
+	NetworkName        string
+	BackendNetworkName string
+	DBRootPassword     string
 }
 
 type SiteTemplateData struct {
-	Domain          string
-	DomainSlug      string
-	PHPVersion      string
-	PHPVersionShort string
-	IncludeWWW      bool
-	NetworkName     string
+	Domain             string
+	DomainSlug         string
+	PHPVersion         string
+	PHPVersionShort    string
+	IncludeWWW         bool
+	NetworkName        string
+	BackendNetworkName string
 }
 
 func RenderCoreCompose(data CoreTemplateData) (string, error) {

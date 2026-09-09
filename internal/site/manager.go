@@ -43,10 +43,13 @@ func ValidateDomain(domain string) error {
 }
 
 type CreateSiteOptions struct {
-	Domain     string
-	PHPVersion string
-	WithRedis  bool
-	InstallWP  bool
+	Domain        string
+	PHPVersion    string
+	WithRedis     bool
+	InstallWP     bool
+	AdminUser     string
+	AdminPassword string
+	AdminEmail    string
 }
 
 type SiteInfo struct {
@@ -108,12 +111,13 @@ func (m *Manager) CreateSite(opts CreateSiteOptions) (err error) {
 		return err
 	}
 
-	// 4. Render file docker-compose.yml (chỉ gồm OpenLiteSpeed, dùng Shared Redis ở Core)
+	// 4. Render file docker-compose.yml (gắn cả Frontend cho Traefik và Backend cho MariaDB/Redis)
 	composeContent, err := template.RenderSiteCompose(template.SiteTemplateData{
-		Domain:      opts.Domain,
-		DomainSlug:  slug,
-		PHPVersion:  opts.PHPVersion,
-		NetworkName: m.cfg.NetworkName,
+		Domain:             opts.Domain,
+		DomainSlug:         slug,
+		PHPVersion:         opts.PHPVersion,
+		NetworkName:        m.cfg.GetFrontendNetwork(),
+		BackendNetworkName: m.cfg.GetBackendNetwork(),
 	})
 	if err != nil {
 		return err
@@ -121,6 +125,10 @@ func (m *Manager) CreateSite(opts CreateSiteOptions) (err error) {
 	if err = os.WriteFile(filepath.Join(siteDir, "docker-compose.yml"), []byte(composeContent), 0644); err != nil {
 		return err
 	}
+
+	// Đảm bảo cả 2 network frontend và backend đều tồn tại
+	_ = m.dm.EnsureNetwork(m.cfg.GetFrontendNetwork())
+	_ = m.dm.EnsureNetwork(m.cfg.GetBackendNetwork())
 
 	// 5. Tải WordPress core và cấu hình wp-config.php đồng bộ
 	if opts.InstallWP {
@@ -218,6 +226,7 @@ RewriteRule . /index.php [L]
 	_ = os.MkdirAll(filepath.Join(wpContentDir, "upgrade"), 0777)
 	_ = os.MkdirAll(filepath.Join(wpContentDir, "uploads"), 0777)
 	_ = os.MkdirAll(filepath.Join(wpContentDir, "plugins"), 0777)
+	_ = DeployMUPlugins(htmlDir)
 	_ = exec.Command("chmod", "-R", "777", wpContentDir).Run()
 
 	// 6. Khởi chạy stack site
@@ -225,7 +234,52 @@ RewriteRule . /index.php [L]
 		return fmt.Errorf("khởi chạy container: %w", err)
 	}
 
-	// 7. Cài đặt các extension tối ưu hóa WordPress (Redis, ImageMagick, Msgpack, Igbinary, Intl) chạy ngầm
+	// 7. Tự động cài đặt hoàn chỉnh WordPress nếu có mật khẩu Admin
+	if opts.InstallWP && opts.AdminPassword != "" {
+		adminUser := opts.AdminUser
+		if adminUser == "" {
+			adminUser = "admin"
+		}
+		adminEmail := opts.AdminEmail
+		if adminEmail == "" {
+			if m.cfg.ACMEEmail != "" {
+				adminEmail = m.cfg.ACMEEmail
+			} else {
+				adminEmail = "admin@" + opts.Domain
+			}
+		}
+		if cleanEmail, err := util.ValidateAndSanitizeEmail(adminEmail); err == nil {
+			adminEmail = cleanEmail
+		}
+
+		time.Sleep(1 * time.Second)
+		installScript := fmt.Sprintf(`<?php
+$_SERVER['HTTP_HOST'] = '%s';
+$_SERVER['SERVER_NAME'] = '%s';
+$_SERVER['REQUEST_URI'] = '/';
+$_SERVER['SCRIPT_NAME'] = '/index.php';
+$_SERVER['PHP_SELF'] = '/index.php';
+$_SERVER['HTTPS'] = 'on';
+define('WP_INSTALLING', true);
+require_once __DIR__ . '/wp-load.php';
+require_once __DIR__ . '/wp-admin/includes/upgrade.php';
+require_once __DIR__ . '/wp-admin/includes/translation-install.php';
+wp_install('%s', '%s', '%s', true, '', '%s');
+update_option('siteurl', 'https://%s');
+update_option('home', 'https://%s');
+echo "OK";
+`, opts.Domain, opts.Domain, opts.Domain, adminUser, adminEmail, opts.AdminPassword, opts.Domain, opts.Domain)
+
+		scriptPath := filepath.Join(htmlDir, ".ols_install.php")
+		if errWrite := os.WriteFile(scriptPath, []byte(installScript), 0600); errWrite == nil {
+			phpShort := strings.ReplaceAll(opts.PHPVersion, ".", "")
+			phpBin := fmt.Sprintf("/usr/local/lsws/lsphp%s/bin/php", phpShort)
+			_, _ = m.dm.ExecInContainer("ols_"+slug, phpBin, "/usr/local/lsws/Example/html/.ols_install.php")
+			_ = os.Remove(scriptPath)
+		}
+	}
+
+	// 8. Cài đặt các extension tối ưu hóa WordPress (Redis, ImageMagick, Msgpack, Igbinary, Intl) chạy ngầm
 	phpShort := strings.ReplaceAll(opts.PHPVersion, ".", "")
 	go func() {
 		time.Sleep(3 * time.Second)
@@ -281,6 +335,15 @@ func (m *Manager) ListSites() ([]SiteInfo, error) {
 	for _, entry := range entries {
 		if entry.IsDir() {
 			domain := entry.Name()
+			siteDir := filepath.Join(sitesDir, domain)
+			composePath := filepath.Join(siteDir, "docker-compose.yml")
+			htmlPath := filepath.Join(siteDir, "html")
+			_, errCompose := os.Stat(composePath)
+			_, errHTML := os.Stat(htmlPath)
+			if errCompose != nil && errHTML != nil {
+				continue // Bỏ qua thư mục rác không phải website
+			}
+
 			slug := DomainToSlug(domain)
 			status := "Stopped"
 			if m.dm.IsContainerRunning("ols_" + slug) {
@@ -336,53 +399,94 @@ func (m *Manager) SyncSite(domain string) error {
 		}
 	}
 
-	// 3. Cập nhật file docker-compose.yml
+	// 3. Cập nhật file docker-compose.yml sang chuẩn Dual Networks
+	_ = m.dm.EnsureNetwork(m.cfg.GetFrontendNetwork())
+	_ = m.dm.EnsureNetwork(m.cfg.GetBackendNetwork())
+
 	composeContent, err := template.RenderSiteCompose(template.SiteTemplateData{
-		Domain:      domain,
-		DomainSlug:  slug,
-		PHPVersion:  phpVer,
-		NetworkName: m.cfg.NetworkName,
+		Domain:             domain,
+		DomainSlug:         slug,
+		PHPVersion:         phpVer,
+		NetworkName:        m.cfg.GetFrontendNetwork(),
+		BackendNetworkName: m.cfg.GetBackendNetwork(),
 	})
 	if err == nil {
 		_ = os.WriteFile(composePath, []byte(composeContent), 0644)
 	}
 
-	// 4. Đảm bảo file .htaccess tồn tại
+	// 4. Đồng bộ và chuẩn hóa file .htaccess
 	htmlDir := filepath.Join(siteDir, "html")
 	htaccessPath := filepath.Join(htmlDir, ".htaccess")
-	if _, err := os.Stat(htaccessPath); os.IsNotExist(err) {
-		defaultHtaccess := `# BEGIN WordPress
-<IfModule mod_rewrite.c>
-RewriteEngine On
-RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
-RewriteBase /
-RewriteRule ^index\.php$ - [L]
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule . /index.php [L]
-</IfModule>
-# END WordPress
-`
-		_ = os.WriteFile(htaccessPath, []byte(defaultHtaccess), 0664)
+	var currentHtaccess string
+	if data, err := os.ReadFile(htaccessPath); err == nil {
+		currentHtaccess = string(data)
 	}
+	sanitizedHtaccess := SanitizeHtaccess(currentHtaccess)
+	_ = os.WriteFile(htaccessPath, []byte(sanitizedHtaccess), 0664)
 
-	// 5. Đồng bộ phân quyền user nobody (UID 65534)
+	// 5. Dọn dẹp các file cache drop-in cũ của bên thứ 3 gây xung đột & cập nhật mu-plugins
+	wpContentDir := filepath.Join(htmlDir, "wp-content")
+	CleanConflictingCacheDropins(wpContentDir)
+	_ = DeployMUPlugins(htmlDir)
+
+	// 6. Đồng bộ phân quyền user nobody (UID 65534)
 	_ = exec.Command("chown", "-R", "65534:65534", htmlDir).Run()
 	_ = exec.Command("chmod", "-R", "775", htmlDir).Run()
-	wpContentDir := filepath.Join(htmlDir, "wp-content")
 	_ = os.MkdirAll(filepath.Join(wpContentDir, "upgrade"), 0777)
 	_ = os.MkdirAll(filepath.Join(wpContentDir, "uploads"), 0777)
 	_ = os.MkdirAll(filepath.Join(wpContentDir, "plugins"), 0777)
 	_ = exec.Command("chmod", "-R", "777", wpContentDir).Run()
 
-	// 6. Tự động đồng bộ và cấu hình cách ly tuyệt đối Redis vào wp-config.php
+	// 7. Tự động sửa lỗi DB_HOST, bổ sung FS_METHOD và cấu hình cách ly Redis vào wp-config.php
 	redisDB := m.GetSiteRedisDB(domain)
 	wpConfigPath := filepath.Join(htmlDir, "wp-config.php")
 	if configBytes, err := os.ReadFile(wpConfigPath); err == nil {
-		configStr := string(configBytes)
-		if !strings.Contains(configStr, "LITESPEED_CONF__CACHE__OBJECT_DB_ID") {
-			redisDirectives := fmt.Sprintf(`
-// Tự động cấu hình & cách ly tuyệt đối Redis Object Cache (ols-cli)
+		sanitizedConfig := SanitizeWPConfig(string(configBytes), slug, redisDB)
+		if sanitizedConfig != string(configBytes) {
+			_ = os.WriteFile(wpConfigPath, []byte(sanitizedConfig), 0644)
+		}
+	}
+
+	// 8. Tự động sửa lỗi siteurl / home trong database nếu bị dính đường dẫn filesystem container
+	dbClient := mariadb.NewContainerClient("ols-mariadb", m.cfg.DBRootPassword)
+	fixURLSQL := fmt.Sprintf("UPDATE `wp_%s`.`wp_options` SET `option_value` = 'https://%s' WHERE `option_name` IN ('siteurl', 'home') AND `option_value` LIKE '%%/usr/local/lsws%%';", slug, domain)
+	_ = dbClient.ExecSQL(fixURLSQL)
+
+	// 9. Tự động xóa sạch toàn bộ cache cũ đang bị lẫn lộn trên Redis
+	_, _ = m.dm.ExecInContainer("ols-redis", "redis-cli", "FLUSHALL")
+
+	// 10. Khởi tạo lại container nếu compose đổi, và khởi động lại OpenLiteSpeed để chắc chắn nạp vhost.conf mới
+	_ = m.dm.ComposeUp(siteDir)
+	_ = m.dm.ComposeRestart(siteDir)
+
+	// 11. Cài đặt các extension tối ưu hóa chạy ngầm nếu chưa có
+	phpShort := strings.ReplaceAll(phpVer, ".", "")
+	go func() {
+		time.Sleep(2 * time.Second)
+		pkgList := fmt.Sprintf("lsphp%s-redis lsphp%s-imagick lsphp%s-msgpack lsphp%s-igbinary lsphp%s-intl", phpShort, phpShort, phpShort, phpShort, phpShort)
+		installCmd := fmt.Sprintf("dpkg -l | grep -q 'lsphp.*-redis' || (apt-get update -qq && apt-get install -y -qq %s && touch /tmp/lshttpd/restart.txt)", pkgList)
+		_, _ = m.dm.ExecInContainer("ols_"+slug, "sh", "-c", installCmd)
+	}()
+
+	return nil
+}
+
+func SanitizeWPConfig(configStr string, slug string, redisDB int) string {
+	// 1. Sửa DB_HOST về 'ols-mariadb' nếu đang là localhost hoặc 127.0.0.1
+	reDBHost := regexp.MustCompile(`(?i)define\s*\(\s*['"]DB_HOST['"]\s*,\s*['"](?:localhost|127\.0\.0\.1|localhost:[0-9]+)['"]\s*\);`)
+	configStr = reDBHost.ReplaceAllString(configStr, "define( 'DB_HOST', 'ols-mariadb' );")
+
+	// 2. Chuẩn bị các hằng số cấu hình cần thiết
+	var directives []string
+
+	// Khắc phục triệt để lỗi hỏi FTP khi cài/cập nhật plugin & theme
+	if !strings.Contains(configStr, "FS_METHOD") {
+		directives = append(directives, "// Khắc phục triệt để lỗi hỏi FTP khi cài/cập nhật plugin & theme\ndefine( 'FS_METHOD', 'direct' );")
+	}
+
+	// Tự động cấu hình & cách ly tuyệt đối Redis Object Cache
+	if !strings.Contains(configStr, "LITESPEED_CONF__CACHE__OBJECT_DB_ID") {
+		directives = append(directives, fmt.Sprintf(`// Tự động cấu hình & cách ly tuyệt đối Redis Object Cache (ols-cli)
 define( 'LITESPEED_CONF', true );
 define( 'LITESPEED_CONF__CACHE__OBJECT', true );
 define( 'LITESPEED_CONF__CACHE__OBJECT_KIND', 2 );
@@ -396,35 +500,102 @@ define( 'WP_REDIS_PORT', 6379 );
 define( 'WP_REDIS_DATABASE', %d );
 define( 'WP_REDIS_PREFIX', '%s:' );
 define( 'WP_CACHE_KEY_SALT', '%s:' );
-define( 'WP_CACHE', true );
-`, redisDB, slug, redisDB, slug, slug)
+define( 'WP_CACHE', true );`, redisDB, slug, redisDB, slug, slug))
+	}
 
-			if idx := strings.Index(configStr, "require_once ABSPATH"); idx != -1 {
-				newConfig := configStr[:idx] + redisDirectives + "\n" + configStr[idx:]
-				_ = os.WriteFile(wpConfigPath, []byte(newConfig), 0644)
-			}
+	if len(directives) > 0 {
+		block := "\n" + strings.Join(directives, "\n\n") + "\n"
+		if idx := strings.Index(configStr, "require_once ABSPATH"); idx != -1 {
+			configStr = configStr[:idx] + block + "\n" + configStr[idx:]
+		} else {
+			configStr = configStr + block
 		}
 	}
 
-	// 7. Tự động xóa sạch toàn bộ cache cũ đang bị lẫn lộn trên Redis
-	_, _ = m.dm.ExecInContainer("ols-redis", "redis-cli", "FLUSHALL")
+	return configStr
+}
 
-	// 8. Tái khởi động lại container để nạp cấu hình mới
-	_ = m.dm.ComposeUp(siteDir)
+func SanitizeHtaccess(htaccessStr string) string {
+	defaultWPBlock := `# BEGIN WordPress
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+RewriteBase /
+RewriteRule ^index\.php$ - [L]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule . /index.php [L]
+</IfModule>
+# END WordPress`
 
-	// 7. Cài đặt các extension tối ưu hóa chạy ngầm nếu chưa có
-	phpShort := strings.ReplaceAll(phpVer, ".", "")
-	go func() {
-		time.Sleep(2 * time.Second)
-		pkgList := fmt.Sprintf("lsphp%s-redis lsphp%s-imagick lsphp%s-msgpack lsphp%s-igbinary lsphp%s-intl", phpShort, phpShort, phpShort, phpShort, phpShort)
-		installCmd := fmt.Sprintf("dpkg -l | grep -q 'lsphp.*-redis' || (apt-get update -qq && apt-get install -y -qq %s && touch /tmp/lshttpd/restart.txt)", pkgList)
-		_, _ = m.dm.ExecInContainer("ols_"+slug, "sh", "-c", installCmd)
-	}()
+	if strings.TrimSpace(htaccessStr) == "" {
+		return defaultWPBlock
+	}
+
+	// Kiểm tra nếu chưa có rewrite rule chuẩn của WordPress
+	if !strings.Contains(htaccessStr, "RewriteRule . /index.php [L]") && !strings.Contains(htaccessStr, "RewriteRule . index.php [L]") {
+		return strings.TrimRight(htaccessStr, "\r\n") + "\n\n" + defaultWPBlock
+	}
+
+	return htaccessStr
+}
+
+func CleanConflictingCacheDropins(wpContentDir string) {
+	// 1. Kiểm tra object-cache.php
+	objCachePath := filepath.Join(wpContentDir, "object-cache.php")
+	if content, err := os.ReadFile(objCachePath); err == nil {
+		lowerContent := strings.ToLower(string(content))
+		// Nếu là drop-in của plugin khác không phải LiteSpeed
+		if !strings.Contains(lowerContent, "litespeed") && !strings.Contains(lowerContent, "lsoc") {
+			_ = os.Rename(objCachePath, objCachePath+".bak")
+		}
+	}
+
+	// 2. Kiểm tra advanced-cache.php
+	advCachePath := filepath.Join(wpContentDir, "advanced-cache.php")
+	if content, err := os.ReadFile(advCachePath); err == nil {
+		lowerContent := strings.ToLower(string(content))
+		if !strings.Contains(lowerContent, "litespeed") {
+			_ = os.Rename(advCachePath, advCachePath+".bak")
+		}
+	}
+}
+
+// SyncCore đồng bộ và nâng cấp cấu hình hạ tầng Core (Traefik Gateway & Services) từ template mới nhất
+func (m *Manager) SyncCore() error {
+	coreDir := filepath.Join(m.cfg.SystemDir, "core")
+	if _, err := os.Stat(coreDir); os.IsNotExist(err) {
+		return nil // Chưa khởi tạo hạ tầng core
+	}
+
+	// 1. Đồng bộ cấu hình Traefik Gateway
+	traefikPath := filepath.Join(coreDir, "traefik", "traefik.yml")
+	if _, err := os.Stat(traefikPath); err == nil {
+		traefikYaml, err := template.RenderTraefikConfig(m.cfg.ACMEEmail)
+		if err == nil {
+			_ = os.WriteFile(traefikPath, []byte(traefikYaml), 0644)
+			_ = exec.Command("docker", "restart", "ols-traefik").Run()
+		}
+	}
+
+	// 2. Đồng bộ file docker-compose.yml của Core (Traefik, MariaDB, Redis)
+	coreComposePath := filepath.Join(coreDir, "docker-compose.yml")
+	if _, err := os.Stat(coreComposePath); err == nil {
+		coreCompose, err := template.RenderCoreCompose(template.CoreTemplateData{
+			NetworkName:        m.cfg.GetFrontendNetwork(),
+			BackendNetworkName: m.cfg.GetBackendNetwork(),
+			DBRootPassword:     m.cfg.DBRootPassword,
+		})
+		if err == nil {
+			_ = os.WriteFile(coreComposePath, []byte(coreCompose), 0644)
+			_ = m.dm.ComposeUp(coreDir)
+		}
+	}
 
 	return nil
 }
 
-func (m *Manager) SyncAllSites() ([]string, []error) {
+func (m *Manager) SyncAllSitesProgress(progressFn func(current, total int, domain string, err error)) ([]string, []error) {
 	sites, err := m.ListSites()
 	if err != nil {
 		return nil, []error{err}
@@ -432,14 +603,23 @@ func (m *Manager) SyncAllSites() ([]string, []error) {
 
 	var synced []string
 	var errs []error
-	for _, s := range sites {
-		if err := m.SyncSite(s.Domain); err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", s.Domain, err))
+	total := len(sites)
+	for i, s := range sites {
+		syncErr := m.SyncSite(s.Domain)
+		if syncErr != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", s.Domain, syncErr))
 		} else {
 			synced = append(synced, s.Domain)
 		}
+		if progressFn != nil {
+			progressFn(i+1, total, s.Domain, syncErr)
+		}
 	}
 	return synced, errs
+}
+
+func (m *Manager) SyncAllSites() ([]string, []error) {
+	return m.SyncAllSitesProgress(nil)
 }
 
 func (m *Manager) GetSiteRedisDB(domain string) int {
@@ -454,3 +634,40 @@ func (m *Manager) GetSiteRedisDB(domain string) int {
 	}
 	return len(sites) % 256
 }
+
+func ParseDomainList(content string) []string {
+	var domains []string
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		// Bỏ qua dòng trống hoặc dòng chú thích
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		domains = append(domains, line)
+	}
+	return domains
+}
+
+// DeployMUPlugins triển khai Must-Use Plugin tự động loại bỏ các header Link dư thừa (REST API, shortlink)
+func DeployMUPlugins(htmlDir string) error {
+	muDir := filepath.Join(htmlDir, "wp-content", "mu-plugins")
+	if err := os.MkdirAll(muDir, 0755); err != nil {
+		return err
+	}
+
+	content := `<?php
+/**
+ * Plugin Name: OLS Header Cleanup
+ * Description: Loại bỏ các header Link dư thừa (REST API, Shortlink) nhằm tối ưu hóa HTTP response header cho website.
+ */
+
+add_action( 'init', function() {
+    remove_action( 'template_redirect', 'rest_output_link_header', 11 );
+    remove_action( 'template_redirect', 'wp_shortlink_header', 11 );
+} );
+`
+	filePath := filepath.Join(muDir, "ols-cleanup.php")
+	return os.WriteFile(filePath, []byte(content), 0644)
+}
+

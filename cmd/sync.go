@@ -23,16 +23,25 @@ var syncCmd = &cobra.Command{
 		mgr := site.NewManager(cfg)
 
 		if syncAll || len(args) == 0 {
+			color.Cyan("-> Đang đồng bộ cấu hình hạ tầng Core (Traefik, Services)...")
+			if err := mgr.SyncCore(); err != nil {
+				color.Yellow("  Cảnh báo đồng bộ hạ tầng Core: %v", err)
+			} else {
+				color.Green("✓ Đồng bộ cấu hình hạ tầng Core hoàn tất")
+			}
+
 			color.Cyan("-> Đang đồng bộ cấu hình cho toàn bộ website...")
-			synced, errs := mgr.SyncAllSites()
-			for _, d := range synced {
-				color.Green("✓ Đã đồng bộ thành công: %s", d)
-			}
-			for _, e := range errs {
-				color.Red("✗ Thất bại: %v", e)
-			}
+			synced, errs := mgr.SyncAllSitesProgress(func(current, total int, domain string, err error) {
+				if err != nil {
+					color.Red("  [%d/%d] Đồng bộ %s: ✗ Thất bại: %v", current, total, domain, err)
+				} else {
+					color.Green("  [%d/%d] Đồng bộ %s: ✓ Hoàn tất", current, total, domain)
+				}
+			})
 			if len(synced) == 0 && len(errs) == 0 {
 				color.Yellow("Hiện chưa có website nào trên hệ thống.")
+			} else {
+				color.Cyan("=== Hoàn tất đồng bộ: Thành công: %d | Thất bại: %d ===", len(synced), len(errs))
 			}
 			return nil
 		}

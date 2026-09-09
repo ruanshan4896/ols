@@ -126,7 +126,7 @@ func PrintMenu(w io.Writer) {
 		{itemNumStyle.Render("[14]"), itemNameStyle.Render("Xem nhật ký lỗi & Debug"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemDescStyle.Render("Traefik, DB, PHP Error & Quét lỗi")},
 
 		{itemNumStyle.Render("[15]"), itemNameStyle.Render("Lá chắn bảo vệ OLS Shield"), shieldGroupStyle.Render("BẢO VỆ TOÀN DIỆN"), itemDescStyle.Render("Chống brute-force, khóa XML-RPC & Uploads")},
-		{itemNumStyle.Render("[16]"), itemNameStyle.Render("Chuyển hướng 301 / 302 (Redirects)"), redirGroupStyle.Render("QUẢN LÝ CHUYỂN HƯỚNG"), itemDescStyle.Render("Chuyển domain 301, URL redirect, test & xóa")},
+		{itemNumStyle.Render("[16]"), itemNameStyle.Render("Quản lý Redirect 301 / 302"), redirGroupStyle.Render("ĐIỀU HƯỚNG TRAFFIC"), itemDescStyle.Render("Redirect domain 301, URL, test & xóa")},
 
 		{itemNumStyle.Render("[0]"), itemNameStyle.Render("Thoát"), sysGroupStyle.Render("HỆ THỐNG"), itemDescStyle.Render("Đóng trình quản trị OLS-CLI")},
 	}

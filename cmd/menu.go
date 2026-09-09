@@ -73,6 +73,7 @@ var (
 	backupGroupStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#BD93F9"))
 	optGroupStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFB86C"))
 	shieldGroupStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FF5555"))
+	redirGroupStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FF79C6"))
 	sysGroupStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#8BE9FD"))
 
 	itemNumStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#F1FA8C"))
@@ -125,6 +126,7 @@ func PrintMenu(w io.Writer) {
 		{itemNumStyle.Render("[14]"), itemNameStyle.Render("Xem nhật ký lỗi & Debug"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemDescStyle.Render("Traefik, DB, PHP Error & Quét lỗi")},
 
 		{itemNumStyle.Render("[15]"), itemNameStyle.Render("Lá chắn bảo vệ OLS Shield"), shieldGroupStyle.Render("BẢO VỆ TOÀN DIỆN"), itemDescStyle.Render("Chống brute-force, khóa XML-RPC & Uploads")},
+		{itemNumStyle.Render("[16]"), itemNameStyle.Render("Chuyển hướng 301 / 302 (Redirects)"), redirGroupStyle.Render("QUẢN LÝ CHUYỂN HƯỚNG"), itemDescStyle.Render("Chuyển domain 301, URL redirect, test & xóa")},
 
 		{itemNumStyle.Render("[0]"), itemNameStyle.Render("Thoát"), sysGroupStyle.Render("HỆ THỐNG"), itemDescStyle.Render("Đóng trình quản trị OLS-CLI")},
 	}
@@ -143,7 +145,7 @@ func RunInteractiveMenu(r io.Reader, w io.Writer) error {
 	for {
 		PrintMenu(w)
 
-		choice := readInput(reader, "Nhập lựa chọn của bạn [0-15]", "")
+		choice := readInput(reader, "Nhập lựa chọn của bạn [0-16]", "")
 		if choice == "" {
 			continue
 		}
@@ -744,8 +746,22 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 		RunInteractiveShieldUI(reader, mgr, systemDir)
 		pauseForEnter(reader)
 
+	case "16":
+		if errCfg != nil {
+			color.Red("\nHệ thống chưa được khởi tạo! Vui lòng chọn [1] trước.")
+			pauseForEnter(reader)
+			return
+		}
+		systemDir := "/opt/ols"
+		if cfg.SystemDir != "" {
+			systemDir = cfg.SystemDir
+		}
+		mgr := site.NewManager(cfg)
+		RunInteractiveRedirectUI(reader, mgr, systemDir)
+		pauseForEnter(reader)
+
 	default:
-		color.Yellow("Lựa chọn không hợp lệ! Vui lòng chọn từ 0 đến 15.")
+		color.Yellow("Lựa chọn không hợp lệ! Vui lòng chọn từ 0 đến 16.")
 		pauseForEnter(reader)
 	}
 }

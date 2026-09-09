@@ -12,12 +12,14 @@ errorlog $VH_ROOT/logs/error.log {
   useServer               1
   logLevel                ERROR
   rollingSize             10M
+  keepDays                7
+  compressArchive         1
 }
 
 accesslog $VH_ROOT/logs/access.log {
   useServer               0
   rollingSize             10M
-  keepDays                30
+  keepDays                7
   compressArchive         1
 }
 

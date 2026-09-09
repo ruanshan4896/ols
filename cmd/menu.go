@@ -103,11 +103,12 @@ func PrintMenu(w io.Writer) {
 	fmt.Fprintf(w, "   %s Kiểm tra trạng thái các container Docker\n", itemNumStyle.Render("[9]"))
 	fmt.Fprintln(w, "")
 
-	fmt.Fprintln(w, " "+categoryHeaderStyle.Render("⚡ [ TỐI ƯU & NĂNG LỰC HỆ THỐNG ]"))
+	fmt.Fprintln(w, " "+categoryHeaderStyle.Render("⚡ [ TỐI ƯU, GIÁM SÁT & DEBUG ]"))
 	fmt.Fprintf(w, "  %s Đồng bộ cấu hình các website %s\n", itemNumStyle.Render("[10]"), itemDescStyle.Render("(Sync vhost, cache & Traefik)"))
 	fmt.Fprintf(w, "  %s Bảo mật: Làm mới Salt Keys & Đổi pass Admin %s\n", itemNumStyle.Render("[11]"), itemDescStyle.Render("(WordPress.org API)"))
 	fmt.Fprintf(w, "  %s Quản lý bộ nhớ Swap RAM %s\n", itemNumStyle.Render("[12]"), itemDescStyle.Render("(Tạo Swap 2-8GB chống sập VPS)"))
 	fmt.Fprintf(w, "  %s Đánh giá tải VPS & Tính số website có thể cài thêm\n", itemNumStyle.Render("[13]"))
+	fmt.Fprintf(w, "  %s Xem nhật ký lỗi & Hỗ trợ Debug %s\n", itemNumStyle.Render("[14]"), itemDescStyle.Render("(Traefik, DB, PHP Error & Quét lỗi)"))
 	fmt.Fprintln(w, "")
 
 	fmt.Fprintln(w, " "+categoryHeaderStyle.Render("🚪 [ HỆ THỐNG ]"))
@@ -121,7 +122,7 @@ func RunInteractiveMenu(r io.Reader, w io.Writer) error {
 	for {
 		PrintMenu(w)
 
-		choice := readInput(reader, "👉 Nhập lựa chọn của bạn [0-13]", "")
+		choice := readInput(reader, "👉 Nhập lựa chọn của bạn [0-14]", "")
 		if choice == "" {
 			continue
 		}
@@ -611,8 +612,45 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 		}
 		pauseForEnter(reader)
 
+	case "14":
+		color.Cyan("\n--- [14] Xem nhật ký lỗi & Hỗ trợ Debug ---")
+		color.New(color.FgWhite, color.Bold).Println("Chọn dịch vụ hoặc thành phần cần kiểm tra lỗi:")
+		fmt.Println("  [1] Traefik Reverse Proxy & SSL (Lỗi chứng chỉ SSL, 502 Bad Gateway)")
+		fmt.Println("  [2] MariaDB Database (Lỗi kết nối cơ sở dữ liệu, crash)")
+		fmt.Println("  [3] Redis Cache (Lỗi bộ nhớ đệm, connection refused)")
+		fmt.Println("  [4] Xem lỗi của một Website cụ thể (PHP Fatal, 500, lỗi plugin)")
+		fmt.Println("  [5] ⚡ QUÉT NHANH TOÀN HỆ THỐNG (Tự động lọc các lỗi gần nhất)")
+		fmt.Println("  [0] Quay lại")
+		fmt.Println()
+
+		subChoice := readInput(reader, "👉 Nhập lựa chọn của bạn [0-5]", "5")
+		switch subChoice {
+		case "1":
+			_ = PrintContainerLog("ols-traefik", "Traefik SSL/Proxy", 60)
+		case "2":
+			_ = PrintContainerLog("ols-mariadb", "MariaDB Database", 60)
+		case "3":
+			_ = PrintContainerLog("ols-redis", "Redis Cache", 60)
+		case "4":
+			domain := readInput(reader, "Nhập tên miền website cần xem nhật ký", "")
+			if domain != "" {
+				color.Cyan("-> Đang lấy nhật ký website %s...", domain)
+				out, err := system.GetSiteLogs(domain, 60)
+				if err != nil {
+					color.Red("Lỗi: %v", err)
+				} else {
+					fmt.Println(out)
+				}
+			}
+		case "5":
+			_ = RunQuickErrorScan(50)
+		default:
+			color.Cyan("Đã quay lại menu chính.")
+		}
+		pauseForEnter(reader)
+
 	default:
-		color.Yellow("Lựa chọn không hợp lệ! Vui lòng chọn từ 0 đến 13.")
+		color.Yellow("Lựa chọn không hợp lệ! Vui lòng chọn từ 0 đến 14.")
 		pauseForEnter(reader)
 	}
 }

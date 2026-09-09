@@ -43,4 +43,7 @@ func TestPrintMenu(t *testing.T) {
 	if !strings.Contains(output, "[13]") {
 		t.Errorf("expected menu to contain [13]")
 	}
+	if !strings.Contains(output, "[14]") {
+		t.Errorf("expected menu to contain [14]")
+	}
 }

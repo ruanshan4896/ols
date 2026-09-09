@@ -94,16 +94,17 @@ ols
    [8] Quản trị Database phpMyAdmin (Bật / Tắt qua web port 8080)
    [9] Kiểm tra trạng thái các container Docker
 
- ⚡ [ TỐI ƯU & NĂNG LỰC HỆ THỐNG ]
+ ⚡ [ TỐI ƯU, GIÁM SÁT & DEBUG ]
   [10] Đồng bộ cấu hình các website (Sync vhost, cache & Traefik)
   [11] Bảo mật: Làm mới Salt Keys & Đổi pass Admin (WordPress.org API)
   [12] Quản lý bộ nhớ Swap RAM (Tạo Swap 2-8GB chống sập VPS)
   [13] Đánh giá tải VPS & Tính số website có thể cài thêm
+  [14] Xem nhật ký lỗi & Hỗ trợ Debug (Traefik, DB, PHP Error & Quét lỗi)
 
  🚪 [ HỆ THỐNG ]
    [0] Thoát
 ─────────────────────────────────────────────────────────────────────
-👉 Nhập lựa chọn của bạn [0-13]: 
+👉 Nhập lựa chọn của bạn [0-14]: 
 ```
 
 ---
@@ -205,6 +206,23 @@ Tự động đo đạc tài nguyên thực tế của VPS (RAM vật lý, Swap,
 ```bash
 # Đo lường và hiển thị báo cáo năng lực chịu tải VPS
 ols capacity
+```
+
+#### Xem nhật ký lỗi & Hỗ trợ Debug (`logs`)
+Dễ dàng tra cứu nhật ký và lọc nhanh các cảnh báo lỗi (ERROR/FATAL) của Traefik SSL, MariaDB Database, Redis Cache hoặc từng website mà không cần lục tìm file log phức tạp:
+```bash
+# Quét nhanh tất cả các lỗi gần nhất trên toàn hệ thống
+ols logs --scan
+
+# Xem 50 dòng log gần nhất của Traefik SSL & Gateway
+ols logs traefik
+
+# Xem log cơ sở dữ liệu MariaDB hoặc Redis
+ols logs mariadb
+ols logs redis
+
+# Xem lỗi PHP Fatal / 500 của một website cụ thể (tùy chọn -n số dòng)
+ols logs example.com -n 100
 ```
 
 ---

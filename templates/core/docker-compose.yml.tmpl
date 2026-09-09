@@ -15,11 +15,17 @@ services:
       - ./traefik/acme.json:/etc/traefik/acme.json
     networks:
       - {{ .NetworkName }}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   mariadb:
     image: mariadb:11.4
     container_name: ols-mariadb
     restart: always
+    command: ["mariadbd", "--binlog-expire-logs-seconds=259200", "--max-binlog-size=100M"]
     environment:
       MARIADB_ROOT_PASSWORD: "{{ .DBRootPassword }}"
     volumes:
@@ -31,6 +37,11 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   redis:
     image: redis:7-alpine
@@ -39,6 +50,11 @@ services:
     command: ["redis-server", "--databases", "256", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
     networks:
       - {{ if .BackendNetworkName }}{{ .BackendNetworkName }}{{ else }}{{ .NetworkName }}{{ end }}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   {{ .NetworkName }}:

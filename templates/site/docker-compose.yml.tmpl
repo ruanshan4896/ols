@@ -42,6 +42,11 @@ services:
       - "traefik.http.middlewares.{{ .DomainSlug }}-sec-headers.headers.referrerpolicy=strict-origin-when-cross-origin"
       - "traefik.http.middlewares.{{ .DomainSlug }}-sec-headers.headers.customresponseheaders.Permissions-Policy=camera=(), microphone=(), geolocation=(), payment=(), usb=()"
       - "traefik.http.services.{{ .DomainSlug }}.loadbalancer.server.port=8088"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   {{ .NetworkName }}:

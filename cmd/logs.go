@@ -88,13 +88,13 @@ func RunQuickErrorScan(lines int) error {
 		return nil
 	}
 
-	color.Yellow("⚠️ Phát hiện %d dòng cảnh báo/lỗi cần lưu ý:\n", len(entries))
+	color.Yellow("[!] Phát hiện %d dòng cảnh báo/lỗi cần lưu ý:\n", len(entries))
 	for _, e := range entries {
 		sourceColor := color.New(color.FgHiMagenta, color.Bold).Sprintf("[%s]", e.Source)
 		fmt.Printf("  %s %s\n", sourceColor, e.Message)
 	}
 	fmt.Println()
-	color.Yellow("💡 Gợi ý: Nếu website gặp sự cố, bạn chỉ cần copy các dòng lỗi trên gửi cho kỹ thuật để được hỗ trợ xử lý ngay.\n")
+	color.Yellow("Gợi ý: Nếu website gặp sự cố, bạn chỉ cần copy các dòng lỗi trên gửi cho kỹ thuật để được hỗ trợ xử lý ngay.\n")
 	return nil
 }
 

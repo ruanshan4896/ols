@@ -35,7 +35,7 @@ func PrintCapacityReport(report *system.CapacityReport) {
 	color.New(color.FgHiGreen, color.Bold).Println("           ĐÁNH GIÁ NĂNG LỰC & KHẢ NĂNG CHỊU TẢI VPS")
 	color.New(color.FgCyan, color.Bold).Println("==================================================================")
 
-	color.New(color.FgWhite, color.Bold).Println("  📊 TÀI NGUYÊN HỆ THỐNG:")
+	color.New(color.FgWhite, color.Bold).Println("  TÀI NGUYÊN HỆ THỐNG:")
 	fmt.Printf("  - Vi xử lý (CPU)      : %d vCore (Load Avg 1m/5m/15m: %.2f, %.2f, %.2f | %s)\n", report.CPUCores, report.CPULoad1, report.CPULoad5, report.CPULoad15, report.CPUStatus)
 	fmt.Printf("  - Tổng RAM vật lý     : %d MB (Đang dùng: %d MB | Khả dụng: %d MB)\n", report.TotalRAMMB, report.UsedRAMMB, report.AvailableRAMMB)
 	if report.SwapTotalMB > 0 {
@@ -46,20 +46,20 @@ func PrintCapacityReport(report *system.CapacityReport) {
 	fmt.Printf("  - Ổ cứng khả dụng     : %.1f GB trống (Tổng: %.1f GB)\n", report.DiskAvailableGB, report.DiskTotalGB)
 
 	fmt.Println()
-	color.New(color.FgWhite, color.Bold).Println("  🌐 HIỆN TRẠNG WEBSITE TRÊN VPS:")
+	color.New(color.FgWhite, color.Bold).Println("  HIỆN TRẠNG WEBSITE TRÊN VPS:")
 	fmt.Printf("  - Số website đang chạy : %d website\n", report.RunningSitesCount)
 	fmt.Printf("  - Mức RAM trung bình   : ~%d MB / website\n", report.AvgSiteRAMMB)
 	fmt.Printf("  - Trạng thái tải       : %s\n", report.SystemStatus)
 
 	fmt.Println()
-	color.New(color.FgHiYellow, color.Bold).Println("  🎯 DỰ BÁO KHẢ NĂNG CÀI ĐẶT THÊM:")
-	color.Green("  👉 Có thể cài thêm an toàn   : ~%d website\n", report.EstSafeSites)
+	color.New(color.FgHiYellow, color.Bold).Println("  DỰ BÁO KHẢ NĂNG CÀI ĐẶT THÊM:")
+	color.Green("  - Có thể cài thêm an toàn   : ~%d website\n", report.EstSafeSites)
 	if report.SwapTotalMB > 0 {
-		color.Green("  👉 Mức cao nhất khi kèm Swap : ~%d website\n", report.EstWithSwapSites)
+		color.Green("  - Mức cao nhất khi kèm Swap : ~%d website\n", report.EstWithSwapSites)
 	}
 
 	color.New(color.FgCyan, color.Bold).Println("==================================================================")
-	color.Yellow("💡 Khuyến nghị: %s\n", report.Recommendation)
+	color.Yellow("Khuyến nghị: %s\n", report.Recommendation)
 }
 
 func init() {

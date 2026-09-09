@@ -76,35 +76,35 @@ ols
 
 ```text
 ╭───────────────────────────────────────────────────────────────────╮
-│       ⚡ HỆ THỐNG QUẢN TRỊ WORDPRESS & OPENLITESPEED (OLS-CLI)     │
+│        HỆ THỐNG QUẢN TRỊ WORDPRESS & OPENLITESPEED (OLS-CLI)      │
 ╰───────────────────────────────────────────────────────────────────╯
 
- 🚀 [ HẠ TẦNG CỐT LÕI ]
+  [ HẠ TẦNG CỐT LÕI ]
    [1] Khởi tạo máy chủ VPS (Traefik Proxy, MariaDB 11, Redis 7, SSL)
 
- 🌐 [ QUẢN LÝ WEBSITE ]
+  [ QUẢN LÝ WEBSITE ]
    [2] Thêm website WordPress mới (Tự động tải WP core & vhost OLS)
    [3] Xem danh sách website đang chạy
    [4] Khởi động lại website (Restart container OLS)
    [5] Xóa website (Xóa container, mã nguồn, database & SSL)
 
- 🛡️ [ SAO LƯU & BẢO MẬT ]
+  [ SAO LƯU & BẢO MẬT ]
    [6] Sao lưu website (Backup 1 site hoặc tất cả website)
    [7] Khôi phục website từ bản sao lưu (Restore .tar.gz)
    [8] Quản trị Database phpMyAdmin (Bật / Tắt qua web port 8080)
    [9] Kiểm tra trạng thái các container Docker
 
- ⚡ [ TỐI ƯU, GIÁM SÁT & DEBUG ]
+  [ TỐI ƯU, GIÁM SÁT & DEBUG ]
   [10] Đồng bộ cấu hình các website (Sync vhost, cache & Traefik)
   [11] Bảo mật: Làm mới Salt Keys & Đổi pass Admin (WordPress.org API)
   [12] Quản lý bộ nhớ Swap RAM (Tạo Swap 2-8GB chống sập VPS)
   [13] Đánh giá tải VPS & Tính số website có thể cài thêm
   [14] Xem nhật ký lỗi & Hỗ trợ Debug (Traefik, DB, PHP Error & Quét lỗi)
 
- 🚪 [ HỆ THỐNG ]
+  [ HỆ THỐNG ]
    [0] Thoát
 ─────────────────────────────────────────────────────────────────────
-👉 Nhập lựa chọn của bạn [0-14]: 
+Nhập lựa chọn của bạn [0-14]: 
 ```
 
 ---

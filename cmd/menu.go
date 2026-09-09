@@ -52,7 +52,7 @@ func readInput(reader *bufio.Reader, prompt string, defaultValue string) string 
 }
 
 func pauseForEnter(reader *bufio.Reader) {
-	fmt.Print("\n👉 Bấm phím [Enter] để quay lại menu chính...")
+	fmt.Print("\nBấm phím [Enter] để quay lại menu chính...")
 	_, _ = reader.ReadString('\n')
 }
 
@@ -82,28 +82,28 @@ var (
 // PrintMenu in giao diện menu trực quan phân nhóm với khung viền bo góc
 func PrintMenu(w io.Writer) {
 	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, headerBoxStyle.Render("⚡ HỆ THỐNG QUẢN TRỊ WORDPRESS & OPENLITESPEED (OLS-CLI)"))
+	fmt.Fprintln(w, headerBoxStyle.Render("HỆ THỐNG QUẢN TRỊ WORDPRESS & OPENLITESPEED (OLS-CLI)"))
 	fmt.Fprintln(w, "")
 
-	fmt.Fprintln(w, " "+categoryHeaderStyle.Render("🚀 [ HẠ TẦNG CỐT LÕI ]"))
+	fmt.Fprintln(w, " "+categoryHeaderStyle.Render("[ HẠ TẦNG CỐT LÕI ]"))
 	fmt.Fprintf(w, "   %s Khởi tạo máy chủ VPS %s\n", itemNumStyle.Render("[1]"), itemDescStyle.Render("(Traefik Proxy, MariaDB 11, Redis 7, SSL)"))
 	fmt.Fprintln(w, "")
 
-	fmt.Fprintln(w, " "+categoryHeaderStyle.Render("🌐 [ QUẢN LÝ WEBSITE ]"))
+	fmt.Fprintln(w, " "+categoryHeaderStyle.Render("[ QUẢN LÝ WEBSITE ]"))
 	fmt.Fprintf(w, "   %s Thêm website WordPress mới %s\n", itemNumStyle.Render("[2]"), itemDescStyle.Render("(Tự động tải WP core & vhost OLS)"))
 	fmt.Fprintf(w, "   %s Xem danh sách website đang chạy\n", itemNumStyle.Render("[3]"))
 	fmt.Fprintf(w, "   %s Khởi động lại website %s\n", itemNumStyle.Render("[4]"), itemDescStyle.Render("(Restart container OLS)"))
 	fmt.Fprintf(w, "   %s Xóa website %s\n", itemNumStyle.Render("[5]"), itemDescStyle.Render("(Xóa container, mã nguồn, database & SSL)"))
 	fmt.Fprintln(w, "")
 
-	fmt.Fprintln(w, " "+categoryHeaderStyle.Render("🛡️ [ SAO LƯU & BẢO MẬT ]"))
+	fmt.Fprintln(w, " "+categoryHeaderStyle.Render("[ SAO LƯU & BẢO MẬT ]"))
 	fmt.Fprintf(w, "   %s Sao lưu website %s\n", itemNumStyle.Render("[6]"), itemDescStyle.Render("(Backup 1 site hoặc tất cả website)"))
 	fmt.Fprintf(w, "   %s Khôi phục website từ bản sao lưu %s\n", itemNumStyle.Render("[7]"), itemDescStyle.Render("(Restore .tar.gz)"))
 	fmt.Fprintf(w, "   %s Quản trị Database phpMyAdmin %s\n", itemNumStyle.Render("[8]"), itemDescStyle.Render("(Bật / Tắt qua web port 8080)"))
 	fmt.Fprintf(w, "   %s Kiểm tra trạng thái các container Docker\n", itemNumStyle.Render("[9]"))
 	fmt.Fprintln(w, "")
 
-	fmt.Fprintln(w, " "+categoryHeaderStyle.Render("⚡ [ TỐI ƯU, GIÁM SÁT & DEBUG ]"))
+	fmt.Fprintln(w, " "+categoryHeaderStyle.Render("[ TỐI ƯU, GIÁM SÁT & DEBUG ]"))
 	fmt.Fprintf(w, "  %s Đồng bộ cấu hình các website %s\n", itemNumStyle.Render("[10]"), itemDescStyle.Render("(Sync vhost, cache & Traefik)"))
 	fmt.Fprintf(w, "  %s Bảo mật: Làm mới Salt Keys & Đổi pass Admin %s\n", itemNumStyle.Render("[11]"), itemDescStyle.Render("(WordPress.org API)"))
 	fmt.Fprintf(w, "  %s Quản lý bộ nhớ Swap RAM %s\n", itemNumStyle.Render("[12]"), itemDescStyle.Render("(Tạo Swap 2-8GB chống sập VPS)"))
@@ -111,7 +111,7 @@ func PrintMenu(w io.Writer) {
 	fmt.Fprintf(w, "  %s Xem nhật ký lỗi & Hỗ trợ Debug %s\n", itemNumStyle.Render("[14]"), itemDescStyle.Render("(Traefik, DB, PHP Error & Quét lỗi)"))
 	fmt.Fprintln(w, "")
 
-	fmt.Fprintln(w, " "+categoryHeaderStyle.Render("🚪 [ HỆ THỐNG ]"))
+	fmt.Fprintln(w, " "+categoryHeaderStyle.Render("[ HỆ THỐNG ]"))
 	fmt.Fprintf(w, "   %s Thoát\n", itemNumStyle.Render("[0]"))
 	fmt.Fprintln(w, dividerStyle.Render("───────────────────────────────────────────────────────────────────"))
 }
@@ -122,7 +122,7 @@ func RunInteractiveMenu(r io.Reader, w io.Writer) error {
 	for {
 		PrintMenu(w)
 
-		choice := readInput(reader, "👉 Nhập lựa chọn của bạn [0-14]", "")
+		choice := readInput(reader, "Nhập lựa chọn của bạn [0-14]", "")
 		if choice == "" {
 			continue
 		}
@@ -619,12 +619,12 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 		fmt.Println("  [2] MariaDB Database (Lỗi kết nối cơ sở dữ liệu, crash)")
 		fmt.Println("  [3] Redis Cache (Lỗi bộ nhớ đệm, connection refused)")
 		fmt.Println("  [4] Xem lỗi của một Website cụ thể (PHP Fatal, 500, lỗi plugin)")
-		fmt.Println("  [5] ⚡ QUÉT NHANH TOÀN HỆ THỐNG (Tự động lọc các lỗi gần nhất)")
-		fmt.Println("  [6] 🗑️  XÓA TOÀN BỘ NHẬT KÝ CŨ (Reset log Docker & Web về 0 byte)")
+		fmt.Println("  [5] QUÉT NHANH TOÀN HỆ THỐNG (Tự động lọc các lỗi gần nhất)")
+		fmt.Println("  [6] XÓA TOÀN BỘ NHẬT KÝ CŨ (Reset log Docker & Web về 0 byte)")
 		fmt.Println("  [0] Quay lại")
 		fmt.Println()
 
-		subChoice := readInput(reader, "👉 Nhập lựa chọn của bạn [0-6]", "5")
+		subChoice := readInput(reader, "Nhập lựa chọn của bạn [0-6]", "5")
 		switch subChoice {
 		case "1":
 			_ = PrintContainerLog("ols-traefik", "Traefik SSL/Proxy", 60)

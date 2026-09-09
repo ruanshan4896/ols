@@ -160,7 +160,10 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 			return
 		}
 		color.Cyan("\n--- [2] Thêm website WordPress mới ---")
-		mode := readInput(reader, "Chọn: [1] Thêm 1 website đơn lẻ | [2] Thêm nhiều website từ file TXT", "1")
+		fmt.Println("  [1] Thêm 1 website đơn lẻ")
+		fmt.Println("  [2] Thêm nhiều website từ file TXT")
+		fmt.Println()
+		mode := readInput(reader, "Nhập lựa chọn của bạn [1-2]", "1")
 		mgr := site.NewManager(cfg)
 
 		if mode == "2" {
@@ -354,7 +357,10 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 			return
 		}
 		color.Cyan("\n--- [6] Sao lưu website (Backup) ---")
-		sub := readInput(reader, "Chọn: [1] Sao lưu 1 website cụ thể | [2] Sao lưu TẤT CẢ website", "1")
+		fmt.Println("  [1] Sao lưu 1 website cụ thể")
+		fmt.Println("  [2] Sao lưu TẤT CẢ website")
+		fmt.Println()
+		sub := readInput(reader, "Nhập lựa chọn của bạn [1-2]", "1")
 		bm := backup.NewBackupManager(cfg)
 
 		if sub == "1" {
@@ -433,7 +439,10 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 			return
 		}
 		color.Cyan("\n--- [8] Quản trị phpMyAdmin ---")
-		subChoice := readInput(reader, "Chọn: [1] Bật phpMyAdmin (Port 8080) | [2] Tắt phpMyAdmin", "1")
+		fmt.Println("  [1] Bật phpMyAdmin (Port 8080)")
+		fmt.Println("  [2] Tắt phpMyAdmin")
+		fmt.Println()
+		subChoice := readInput(reader, "Nhập lựa chọn của bạn [1-2]", "1")
 		if subChoice == "1" {
 			pmaPort = 8080
 			_ = pmaEnableCmd.RunE(pmaEnableCmd, []string{})
@@ -457,7 +466,10 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 			return
 		}
 		color.Cyan("\n--- [10] Đồng bộ cấu hình các website ---")
-		sub := readInput(reader, "Chọn: [1] Đồng bộ 1 website cụ thể | [2] Đồng bộ TẤT CẢ website", "2")
+		fmt.Println("  [1] Đồng bộ 1 website cụ thể")
+		fmt.Println("  [2] Đồng bộ TẤT CẢ website")
+		fmt.Println()
+		sub := readInput(reader, "Nhập lựa chọn của bạn [1-2]", "2")
 		mgr := site.NewManager(cfg)
 		if sub == "1" {
 			domain := readInput(reader, "Nhập tên miền cần đồng bộ", "")
@@ -503,7 +515,10 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 			return
 		}
 		color.Cyan("\n--- [11] Bảo mật: Làm mới Salt Keys & Đổi mật khẩu Admin ---")
-		sub := readInput(reader, "Chọn: [1] Bảo mật 1 website cụ thể | [2] Bảo mật TẤT CẢ website", "1")
+		fmt.Println("  [1] Bảo mật 1 website cụ thể")
+		fmt.Println("  [2] Bảo mật TẤT CẢ website")
+		fmt.Println()
+		sub := readInput(reader, "Nhập lựa chọn của bạn [1-2]", "1")
 		mgr := site.NewManager(cfg)
 
 		if sub == "1" {
@@ -513,7 +528,12 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 				pauseForEnter(reader)
 				return
 			}
-			optType := readInput(reader, "Chọn tác vụ: [1] Cả hai (Làm mới Salts & Đổi Pass) | [2] Chỉ làm mới Salts | [3] Chỉ đổi Pass", "1")
+			fmt.Println("Chọn tác vụ:")
+			fmt.Println("  [1] Cả hai (Làm mới Salts & Đổi Pass)")
+			fmt.Println("  [2] Chỉ làm mới Salts")
+			fmt.Println("  [3] Chỉ đổi Pass")
+			fmt.Println()
+			optType := readInput(reader, "Nhập lựa chọn của bạn [1-3]", "1")
 
 			if optType == "1" || optType == "2" {
 				color.Cyan("-> Đang lấy 8 Authentication Salts/Keys mới từ WordPress.org API...")
@@ -550,7 +570,12 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 				return
 			}
 
-			optType := readInput(reader, "Chọn tác vụ: [1] Cả hai (Làm mới Salts & Đổi Pass) | [2] Chỉ làm mới Salts | [3] Chỉ đổi Pass", "1")
+			fmt.Println("Chọn tác vụ:")
+			fmt.Println("  [1] Cả hai (Làm mới Salts & Đổi Pass)")
+			fmt.Println("  [2] Chỉ làm mới Salts")
+			fmt.Println("  [3] Chỉ đổi Pass")
+			fmt.Println()
+			optType := readInput(reader, "Nhập lựa chọn của bạn [1-3]", "1")
 			globalPass := ""
 			if optType == "1" || optType == "3" {
 				globalPass = readInput(reader, "Mật khẩu quản trị mới dùng chung [Enter để tự sinh mật khẩu riêng cho từng site]", "")
@@ -593,7 +618,10 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 			fmt.Println()
 		}
 
-		sub := readInput(reader, "Chọn: [1] Tạo mới / Thay đổi dung lượng Swap | [2] Tắt và xóa Swap", "1")
+		fmt.Println("  [1] Tạo mới / Thay đổi dung lượng Swap")
+		fmt.Println("  [2] Tắt và xóa Swap")
+		fmt.Println()
+		sub := readInput(reader, "Nhập lựa chọn của bạn [1-2]", "1")
 		if sub == "1" {
 			sizeStr := readInput(reader, "Nhập dung lượng Swap mong muốn (GB) [Ví dụ: 2, 4, 8]", "2")
 			sizeGB, _ := strconv.Atoi(sizeStr)

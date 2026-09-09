@@ -83,6 +83,60 @@ func TestRenderSiteVhost(t *testing.T) {
 	if !strings.Contains(out, "xmlrpc") {
 		t.Errorf("expected xmlrpc blocking rule in vhost, got: %s", out)
 	}
+	if !strings.Contains(out, "uploads") {
+		t.Errorf("expected uploads blocking rule in vhost, got: %s", out)
+	}
+	if !strings.Contains(out, "wp-json/wp/v2/users") {
+		t.Errorf("expected rest api users blocking rule in vhost, got: %s", out)
+	}
+
+	// Test with Shield disabled
+	outDisabled, err := RenderSiteVhost("example.com", SiteVhostData{
+		Domain:              "example.com",
+		BlockXMLRPC:         false,
+		BlockSensitiveFiles: false,
+		BlockUploadsPHP:     false,
+		BlockUserScan:       false,
+	})
+	if err != nil {
+		t.Fatalf("render site vhost disabled failed: %v", err)
+	}
+	if strings.Contains(outDisabled, "xmlrpc.php") {
+		t.Errorf("expected no xmlrpc blocking rule when disabled")
+	}
+	if strings.Contains(outDisabled, "wp-content/uploads") {
+		t.Errorf("expected no uploads blocking rule when disabled")
+	}
+}
+
+func TestRenderSiteCompose_RateLimit(t *testing.T) {
+	data := SiteTemplateData{
+		Domain:         "example.com",
+		DomainSlug:     "example_com",
+		PHPVersion:     "8.2",
+		NetworkName:    "ols-network",
+		RateLimitLogin: true,
+	}
+	out, err := RenderSiteCompose(data)
+	if err != nil {
+		t.Fatalf("RenderSiteCompose failed: %v", err)
+	}
+	if !strings.Contains(out, "wp-login.php") {
+		t.Errorf("expected wp-login.php router in compose, got: %s", out)
+	}
+	if !strings.Contains(out, "ratelimit.average=5") {
+		t.Errorf("expected rate limit middleware in compose, got: %s", out)
+	}
+
+	// Test with RateLimitLogin = false
+	data.RateLimitLogin = false
+	outNoLimit, err := RenderSiteCompose(data)
+	if err != nil {
+		t.Fatalf("RenderSiteCompose no limit failed: %v", err)
+	}
+	if strings.Contains(outNoLimit, "wp-login.php") {
+		t.Errorf("did not expect wp-login.php router when rate limit disabled")
+	}
 }
 
 func TestRenderTraefikConfig(t *testing.T) {

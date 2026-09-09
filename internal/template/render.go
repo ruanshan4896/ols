@@ -23,6 +23,15 @@ type SiteTemplateData struct {
 	IncludeWWW         bool
 	NetworkName        string
 	BackendNetworkName string
+	RateLimitLogin     bool
+}
+
+type SiteVhostData struct {
+	Domain              string
+	BlockXMLRPC         bool
+	BlockSensitiveFiles bool
+	BlockUploadsPHP     bool
+	BlockUserScan       bool
 }
 
 func RenderCoreCompose(data CoreTemplateData) (string, error) {
@@ -39,8 +48,19 @@ func RenderSiteCompose(data SiteTemplateData) (string, error) {
 	return renderFile("site/docker-compose.yml.tmpl", data)
 }
 
-func RenderSiteVhost(domain string) (string, error) {
-	return renderFile("site/vhost.conf.tmpl", map[string]string{"Domain": domain})
+func RenderSiteVhost(domain string, opts ...SiteVhostData) (string, error) {
+	data := SiteVhostData{
+		Domain:              domain,
+		BlockXMLRPC:         true,
+		BlockSensitiveFiles: true,
+		BlockUploadsPHP:     true,
+		BlockUserScan:       true,
+	}
+	if len(opts) > 0 {
+		data = opts[0]
+		data.Domain = domain
+	}
+	return renderFile("site/vhost.conf.tmpl", data)
 }
 
 func renderFile(name string, data interface{}) (string, error) {

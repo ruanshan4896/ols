@@ -41,7 +41,16 @@ services:
       - "traefik.http.middlewares.{{ .DomainSlug }}-sec-headers.headers.contenttypenosniff=true"
       - "traefik.http.middlewares.{{ .DomainSlug }}-sec-headers.headers.referrerpolicy=strict-origin-when-cross-origin"
       - "traefik.http.middlewares.{{ .DomainSlug }}-sec-headers.headers.customresponseheaders.Permissions-Policy=camera=(), microphone=(), geolocation=(), payment=(), usb=()"
-      - "traefik.http.services.{{ .DomainSlug }}.loadbalancer.server.port=8088"
+{{ if .RateLimitLogin }}      # Router Rate Limit chuyen dung cho wp-login.php (Chong Brute Force)
+      - "traefik.http.routers.{{ .DomainSlug }}-login.rule=(Host(`{{ .Domain }}`){{ if .IncludeWWW }} || Host(`www.{{ .Domain }}`){{ end }}) && Path(`/wp-login.php`)"
+      - "traefik.http.routers.{{ .DomainSlug }}-login.entrypoints=websecure"
+      - "traefik.http.routers.{{ .DomainSlug }}-login.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.{{ .DomainSlug }}-login.priority=100"
+      - "traefik.http.routers.{{ .DomainSlug }}-login.middlewares={{ .DomainSlug }}-login-limit,{{ .DomainSlug }}-sec-headers"
+      - "traefik.http.middlewares.{{ .DomainSlug }}-login-limit.ratelimit.average=5"
+      - "traefik.http.middlewares.{{ .DomainSlug }}-login-limit.ratelimit.burst=10"
+      - "traefik.http.middlewares.{{ .DomainSlug }}-login-limit.ratelimit.period=1m"
+{{ end }}      - "traefik.http.services.{{ .DomainSlug }}.loadbalancer.server.port=8088"
     logging:
       driver: "json-file"
       options:

@@ -109,6 +109,7 @@ func PrintMenu(w io.Writer) {
 	fmt.Fprintf(w, "  %s Quản lý bộ nhớ Swap RAM %s\n", itemNumStyle.Render("[12]"), itemDescStyle.Render("(Tạo Swap 2-8GB chống sập VPS)"))
 	fmt.Fprintf(w, "  %s Đánh giá tải VPS & Tính số website có thể cài thêm\n", itemNumStyle.Render("[13]"))
 	fmt.Fprintf(w, "  %s Xem nhật ký lỗi & Hỗ trợ Debug %s\n", itemNumStyle.Render("[14]"), itemDescStyle.Render("(Traefik, DB, PHP Error & Quét lỗi)"))
+	fmt.Fprintf(w, "  %s Lá chắn bảo vệ OLS Shield %s\n", itemNumStyle.Render("[15]"), itemDescStyle.Render("(Chống brute-force, khóa XML-RPC & Uploads)"))
 	fmt.Fprintln(w, "")
 
 	fmt.Fprintln(w, " "+categoryHeaderStyle.Render("[ HỆ THỐNG ]"))
@@ -122,7 +123,7 @@ func RunInteractiveMenu(r io.Reader, w io.Writer) error {
 	for {
 		PrintMenu(w)
 
-		choice := readInput(reader, "Nhập lựa chọn của bạn [0-14]", "")
+		choice := readInput(reader, "Nhập lựa chọn của bạn [0-15]", "")
 		if choice == "" {
 			continue
 		}
@@ -657,8 +658,22 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 		}
 		pauseForEnter(reader)
 
+	case "15":
+		if errCfg != nil {
+			color.Red("\nHệ thống chưa được khởi tạo! Vui lòng chọn [1] trước.")
+			pauseForEnter(reader)
+			return
+		}
+		systemDir := "/opt/ols"
+		if cfg.SystemDir != "" {
+			systemDir = cfg.SystemDir
+		}
+		mgr := site.NewManager(cfg)
+		RunInteractiveShieldUI(reader, mgr, systemDir)
+		pauseForEnter(reader)
+
 	default:
-		color.Yellow("Lựa chọn không hợp lệ! Vui lòng chọn từ 0 đến 14.")
+		color.Yellow("Lựa chọn không hợp lệ! Vui lòng chọn từ 0 đến 15.")
 		pauseForEnter(reader)
 	}
 }

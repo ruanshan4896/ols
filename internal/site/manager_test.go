@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ols-cli/ols/internal/config"
+	"github.com/ols-cli/ols/internal/shield"
 )
 
 func TestDomainToSlug(t *testing.T) {
@@ -245,4 +246,48 @@ func TestDeployMUPlugins(t *testing.T) {
 	}
 }
 
+func TestApplyShield(t *testing.T) {
+	tmpDir := t.TempDir()
+	domain := "shieldsite.local"
+	siteDir := filepath.Join(tmpDir, "sites", domain)
+	_ = os.MkdirAll(filepath.Join(siteDir, "ols", "conf"), 0755)
+	_ = os.WriteFile(filepath.Join(siteDir, "docker-compose.yml"), []byte("services:\n  ols:\n    image: litespeedtech/openlitespeed:1.8.2-lsphp82\n"), 0644)
+
+	cfg := &config.Config{SystemDir: tmpDir}
+	mgr := NewManager(cfg)
+
+	shieldCfg := shield.SiteShieldConfig{
+		BlockXMLRPC:         false,
+		RateLimitLogin:      true,
+		BlockUploadsPHP:     true,
+		BlockUserScan:       false,
+		BlockSensitiveFiles: true,
+	}
+
+	// Apply shield
+	if err := mgr.ApplyShield(domain, shieldCfg); err != nil {
+		t.Fatalf("ApplyShield failed: %v", err)
+	}
+
+	// Verify shield.json saved
+	savedCfg, err := shield.GetShieldConfig(tmpDir, domain)
+	if err != nil {
+		t.Fatalf("GetShieldConfig failed: %v", err)
+	}
+	if savedCfg.BlockXMLRPC != false || savedCfg.BlockUploadsPHP != true {
+		t.Errorf("saved shield config mismatch: %+v", savedCfg)
+	}
+
+	// Verify vhost.conf rendered correctly
+	vhostData, err := os.ReadFile(filepath.Join(siteDir, "ols", "conf", "vhost.conf"))
+	if err != nil {
+		t.Fatalf("read vhost.conf failed: %v", err)
+	}
+	if strings.Contains(string(vhostData), "xmlrpc.php") {
+		t.Errorf("expected xmlrpc to NOT be in vhost when BlockXMLRPC=false")
+	}
+	if !strings.Contains(string(vhostData), "uploads") {
+		t.Errorf("expected uploads rule to be in vhost when BlockUploadsPHP=true")
+	}
+}
 

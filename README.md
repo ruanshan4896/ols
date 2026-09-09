@@ -100,11 +100,12 @@ ols
   [12] Quản lý bộ nhớ Swap RAM (Tạo Swap 2-8GB chống sập VPS)
   [13] Đánh giá tải VPS & Tính số website có thể cài thêm
   [14] Xem nhật ký lỗi & Hỗ trợ Debug (Traefik, DB, PHP Error & Quét lỗi)
+  [15] Lá chắn bảo vệ OLS Shield (Chống brute-force, khóa XML-RPC & Uploads)
 
   [ HỆ THỐNG ]
    [0] Thoát
 ─────────────────────────────────────────────────────────────────────
-Nhập lựa chọn của bạn [0-14]: 
+Nhập lựa chọn của bạn [0-15]: 
 ```
 
 ---
@@ -226,6 +227,26 @@ ols logs example.com -n 100
 
 # Xóa sạch toàn bộ log cũ của các container và website, reset về 0 byte
 ols logs --clear
+```
+
+#### Quản lý lá chắn bảo mật OLS Shield (`shield`)
+Phòng thủ đa tầng ngay tại OpenLiteSpeed và Traefik, ngăn chặn botnet dò pass, khóa XML-RPC và cấm thực thi webshell trong thư mục upload:
+```bash
+# Xem trạng thái lá chắn trên toàn bộ các website
+ols shield status
+
+# Xem chi tiết cấu hình lá chắn của một website cụ thể
+ols shield example.com
+
+# Kích hoạt chế độ phòng thủ toàn diện (Under Attack) cho một site
+ols shield enable example.com
+
+# Kích hoạt chế độ phòng thủ toàn diện cho TẤT CẢ website trên VPS
+ols shield enable --all
+
+# Tắt tạm thời các lớp phòng thủ (chế độ debug gỡ lỗi)
+ols shield disable example.com
+ols shield disable --all
 ```
 
 ---

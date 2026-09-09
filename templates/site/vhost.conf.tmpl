@@ -36,9 +36,17 @@ rewrite  {
 RewriteEngine On
 RewriteBase /
 
-# Chặn brute-force bot XML-RPC và các file nhạy cảm
-RewriteRule ^(xmlrpc\.php|wp-config\.php|readme\.html|\.env|\.git) - [F,L,NC]
-
+{{ if .BlockXMLRPC }}# [Shield] Khoa brute-force bot XML-RPC
+RewriteRule ^xmlrpc\.php$ - [F,L,NC]
+{{ end }}{{ if .BlockSensitiveFiles }}# [Shield] Khoa cac file he thong nhay cam
+RewriteRule ^(wp-config\.php|readme\.html|license\.txt|\.env|\.git|debug\.log) - [F,L,NC]
+{{ end }}{{ if .BlockUploadsPHP }}# [Shield] Cam chay ma nguon PHP trong thu muc uploads
+RewriteRule ^wp-content/uploads/.*\.php$ - [F,L,NC]
+{{ end }}{{ if .BlockUserScan }}# [Shield] Chong do quet Username qua author query va REST API users
+RewriteCond %{QUERY_STRING} ^author=([0-9]+) [NC]
+RewriteRule ^ - [F,L]
+RewriteRule ^wp-json/wp/v2/users - [F,L,NC]
+{{ end }}
 # WordPress Permalinks
 RewriteRule ^index\.php$ - [L]
 RewriteCond %{REQUEST_FILENAME} !-f

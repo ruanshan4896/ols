@@ -12,6 +12,7 @@ import (
 	"github.com/ols-cli/ols/internal/config"
 	"github.com/ols-cli/ols/internal/docker"
 	"github.com/ols-cli/ols/internal/mariadb"
+	"github.com/ols-cli/ols/internal/shield"
 	"github.com/ols-cli/ols/internal/template"
 	"github.com/ols-cli/ols/internal/util"
 )
@@ -102,8 +103,17 @@ func (m *Manager) CreateSite(opts CreateSiteOptions) (err error) {
 		}
 	}
 
-	// 3. Render file vhost.conf
-	vhostContent, err := template.RenderSiteVhost(opts.Domain)
+	// 3. Khởi tạo cấu hình bảo mật OLS Shield và Render file vhost.conf
+	shieldCfg := shield.DefaultShieldConfig()
+	_ = shield.SaveShieldConfig(m.cfg.SystemDir, opts.Domain, shieldCfg)
+
+	vhostContent, err := template.RenderSiteVhost(opts.Domain, template.SiteVhostData{
+		Domain:              opts.Domain,
+		BlockXMLRPC:         shieldCfg.BlockXMLRPC,
+		BlockSensitiveFiles: shieldCfg.BlockSensitiveFiles,
+		BlockUploadsPHP:     shieldCfg.BlockUploadsPHP,
+		BlockUserScan:       shieldCfg.BlockUserScan,
+	})
 	if err != nil {
 		return err
 	}
@@ -118,6 +128,7 @@ func (m *Manager) CreateSite(opts CreateSiteOptions) (err error) {
 		PHPVersion:         opts.PHPVersion,
 		NetworkName:        m.cfg.GetFrontendNetwork(),
 		BackendNetworkName: m.cfg.GetBackendNetwork(),
+		RateLimitLogin:     shieldCfg.RateLimitLogin,
 	})
 	if err != nil {
 		return err
@@ -371,10 +382,17 @@ func (m *Manager) SyncSite(domain string) error {
 
 	slug := DomainToSlug(domain)
 
-	// 1. Cập nhật file vhost.conf mới nhất
+	// 1. Cập nhật file vhost.conf mới nhất với cấu hình Shield hiện tại
+	shieldCfg, _ := shield.GetShieldConfig(m.cfg.SystemDir, domain)
 	olsConfDir := filepath.Join(siteDir, "ols", "conf")
 	_ = os.MkdirAll(olsConfDir, 0755)
-	vhostContent, err := template.RenderSiteVhost(domain)
+	vhostContent, err := template.RenderSiteVhost(domain, template.SiteVhostData{
+		Domain:              domain,
+		BlockXMLRPC:         shieldCfg.BlockXMLRPC,
+		BlockSensitiveFiles: shieldCfg.BlockSensitiveFiles,
+		BlockUploadsPHP:     shieldCfg.BlockUploadsPHP,
+		BlockUserScan:       shieldCfg.BlockUserScan,
+	})
 	if err != nil {
 		return fmt.Errorf("render vhost: %w", err)
 	}
@@ -399,7 +417,7 @@ func (m *Manager) SyncSite(domain string) error {
 		}
 	}
 
-	// 3. Cập nhật file docker-compose.yml sang chuẩn Dual Networks
+	// 3. Cập nhật file docker-compose.yml sang chuẩn Dual Networks và RateLimit
 	_ = m.dm.EnsureNetwork(m.cfg.GetFrontendNetwork())
 	_ = m.dm.EnsureNetwork(m.cfg.GetBackendNetwork())
 
@@ -409,6 +427,7 @@ func (m *Manager) SyncSite(domain string) error {
 		PHPVersion:         phpVer,
 		NetworkName:        m.cfg.GetFrontendNetwork(),
 		BackendNetworkName: m.cfg.GetBackendNetwork(),
+		RateLimitLogin:     shieldCfg.RateLimitLogin,
 	})
 	if err == nil {
 		_ = os.WriteFile(composePath, []byte(composeContent), 0644)
@@ -669,5 +688,94 @@ add_action( 'init', function() {
 `
 	filePath := filepath.Join(muDir, "ols-cleanup.php")
 	return os.WriteFile(filePath, []byte(content), 0644)
+}
+
+// ApplyShield áp dụng cấu hình OLS Shield cho một website cụ thể
+func (m *Manager) ApplyShield(domain string, cfg shield.SiteShieldConfig) error {
+	siteDir := filepath.Join(m.cfg.SystemDir, "sites", domain)
+	if _, err := os.Stat(siteDir); os.IsNotExist(err) {
+		return fmt.Errorf("website '%s' không tồn tại", domain)
+	}
+
+	// 1. Lưu cấu hình shield.json
+	if err := shield.SaveShieldConfig(m.cfg.SystemDir, domain, cfg); err != nil {
+		return fmt.Errorf("lưu cấu hình shield: %w", err)
+	}
+
+	slug := DomainToSlug(domain)
+	olsConfDir := filepath.Join(siteDir, "ols", "conf")
+	_ = os.MkdirAll(olsConfDir, 0755)
+
+	// 2. Render và ghi vhost.conf mới
+	vhostContent, err := template.RenderSiteVhost(domain, template.SiteVhostData{
+		Domain:              domain,
+		BlockXMLRPC:         cfg.BlockXMLRPC,
+		BlockSensitiveFiles: cfg.BlockSensitiveFiles,
+		BlockUploadsPHP:     cfg.BlockUploadsPHP,
+		BlockUserScan:       cfg.BlockUserScan,
+	})
+	if err != nil {
+		return fmt.Errorf("render vhost: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(olsConfDir, "vhost.conf"), []byte(vhostContent), 0644); err != nil {
+		return fmt.Errorf("ghi vhost.conf: %w", err)
+	}
+
+	// 3. Nhận diện phiên bản PHP từ docker-compose hiện tại
+	phpVer := "8.2"
+	composePath := filepath.Join(siteDir, "docker-compose.yml")
+	if content, err := os.ReadFile(composePath); err == nil {
+		re := regexp.MustCompile(`lsphp(8[1-3])`)
+		if match := re.FindStringSubmatch(string(content)); len(match) > 1 {
+			switch match[1] {
+			case "81":
+				phpVer = "8.1"
+			case "82":
+				phpVer = "8.2"
+			case "83":
+				phpVer = "8.3"
+			}
+		}
+	}
+
+	// 4. Render docker-compose.yml mới với RateLimitLogin
+	composeContent, err := template.RenderSiteCompose(template.SiteTemplateData{
+		Domain:             domain,
+		DomainSlug:         slug,
+		PHPVersion:         phpVer,
+		NetworkName:        m.cfg.GetFrontendNetwork(),
+		BackendNetworkName: m.cfg.GetBackendNetwork(),
+		RateLimitLogin:     cfg.RateLimitLogin,
+	})
+	if err == nil {
+		_ = os.WriteFile(composePath, []byte(composeContent), 0644)
+	}
+
+	// 5. Nạp lại cấu hình container và khởi động lại OLS
+	_ = m.dm.ComposeUp(siteDir)
+	_ = m.dm.ComposeRestart(siteDir)
+
+	return nil
+}
+
+// ApplyShieldAll áp dụng cấu hình OLS Shield cho toàn bộ website trên VPS
+func (m *Manager) ApplyShieldAll(cfg shield.SiteShieldConfig) ([]string, []error) {
+	sites, err := m.ListSites()
+	if err != nil {
+		return nil, []error{err}
+	}
+
+	var succeeded []string
+	var errors []error
+
+	for _, s := range sites {
+		if err := m.ApplyShield(s.Domain, cfg); err != nil {
+			errors = append(errors, fmt.Errorf("%s: %w", s.Domain, err))
+		} else {
+			succeeded = append(succeeded, s.Domain)
+		}
+	}
+
+	return succeeded, errors
 }
 

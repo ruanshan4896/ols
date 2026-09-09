@@ -58,6 +58,10 @@ type SiteInfo struct {
 	Status     string
 	PHPVersion string
 	WithRedis  bool
+	DBName     string
+	DBUser     string
+	DBPassword string
+	DBHost     string
 }
 
 func (m *Manager) CreateSite(opts CreateSiteOptions) (err error) {
@@ -346,27 +350,84 @@ func (m *Manager) ListSites() ([]SiteInfo, error) {
 	for _, entry := range entries {
 		if entry.IsDir() {
 			domain := entry.Name()
-			siteDir := filepath.Join(sitesDir, domain)
-			composePath := filepath.Join(siteDir, "docker-compose.yml")
-			htmlPath := filepath.Join(siteDir, "html")
-			_, errCompose := os.Stat(composePath)
-			_, errHTML := os.Stat(htmlPath)
-			if errCompose != nil && errHTML != nil {
-				continue // Bỏ qua thư mục rác không phải website
+			info, errInfo := m.GetSiteInfo(domain)
+			if errInfo != nil {
+				continue // Bỏ qua thư mục không hợp lệ
 			}
-
-			slug := DomainToSlug(domain)
-			status := "Stopped"
-			if m.dm.IsContainerRunning("ols_" + slug) {
-				status = "Running"
-			}
-			results = append(results, SiteInfo{
-				Domain: domain,
-				Status: status,
-			})
+			results = append(results, *info)
 		}
 	}
 	return results, nil
+}
+
+// GetSiteInfo đọc đầy đủ thông tin trạng thái, PHP và Database của một website
+func (m *Manager) GetSiteInfo(domain string) (*SiteInfo, error) {
+	siteDir := filepath.Join(m.cfg.SystemDir, "sites", domain)
+	composePath := filepath.Join(siteDir, "docker-compose.yml")
+	htmlPath := filepath.Join(siteDir, "html")
+	_, errCompose := os.Stat(composePath)
+	_, errHTML := os.Stat(htmlPath)
+	if errCompose != nil && errHTML != nil {
+		return nil, fmt.Errorf("thư mục %s không phải website hợp lệ", domain)
+	}
+
+	slug := DomainToSlug(domain)
+	status := "Stopped"
+	if m.dm.IsContainerRunning("ols_" + slug) {
+		status = "Running"
+	}
+
+	// 1. Nhận diện phiên bản PHP từ docker-compose.yml
+	phpVer := "8.2"
+	if composeBytes, err := os.ReadFile(composePath); err == nil {
+		rePHP := regexp.MustCompile(`lsphp(8[1-3])`)
+		if match := rePHP.FindStringSubmatch(string(composeBytes)); len(match) > 1 {
+			switch match[1] {
+			case "81":
+				phpVer = "8.1"
+			case "82":
+				phpVer = "8.2"
+			case "83":
+				phpVer = "8.3"
+			}
+		}
+	}
+
+	// 2. Trích xuất thông tin Database từ wp-config.php
+	dbName := "wp_" + slug
+	dbUser := "usr_" + slug
+	dbPass := ""
+	dbHost := "ols-mariadb"
+	wpConfigPath := filepath.Join(htmlPath, "wp-config.php")
+	if wpConfigBytes, err := os.ReadFile(wpConfigPath); err == nil {
+		wpConfigStr := string(wpConfigBytes)
+		reDB := regexp.MustCompile(`define\(\s*['"]DB_NAME['"]\s*,\s*['"]([^'"]+)['"]\s*\)`)
+		if match := reDB.FindStringSubmatch(wpConfigStr); len(match) > 1 {
+			dbName = match[1]
+		}
+		reUser := regexp.MustCompile(`define\(\s*['"]DB_USER['"]\s*,\s*['"]([^'"]+)['"]\s*\)`)
+		if match := reUser.FindStringSubmatch(wpConfigStr); len(match) > 1 {
+			dbUser = match[1]
+		}
+		rePass := regexp.MustCompile(`define\(\s*['"]DB_PASSWORD['"]\s*,\s*['"]([^'"]+)['"]\s*\)`)
+		if match := rePass.FindStringSubmatch(wpConfigStr); len(match) > 1 {
+			dbPass = match[1]
+		}
+		reHost := regexp.MustCompile(`define\(\s*['"]DB_HOST['"]\s*,\s*['"]([^'"]+)['"]\s*\)`)
+		if match := reHost.FindStringSubmatch(wpConfigStr); len(match) > 1 {
+			dbHost = match[1]
+		}
+	}
+
+	return &SiteInfo{
+		Domain:     domain,
+		Status:     status,
+		PHPVersion: phpVer,
+		DBName:     dbName,
+		DBUser:     dbUser,
+		DBPassword: dbPass,
+		DBHost:     dbHost,
+	}, nil
 }
 
 func (m *Manager) RestartSite(domain string) error {

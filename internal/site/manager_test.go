@@ -291,3 +291,47 @@ func TestApplyShield(t *testing.T) {
 	}
 }
 
+func TestGetSiteInfo(t *testing.T) {
+	tmpDir := t.TempDir()
+	domain := "mytest.com"
+	siteDir := filepath.Join(tmpDir, "sites", domain)
+	htmlDir := filepath.Join(siteDir, "html")
+	_ = os.MkdirAll(htmlDir, 0755)
+
+	_ = os.WriteFile(filepath.Join(siteDir, "docker-compose.yml"), []byte("services:\n  ols:\n    image: litespeedtech/openlitespeed:1.8.2-lsphp83\n"), 0644)
+	wpConfig := `<?php
+define('DB_NAME', 'wp_custom_db');
+define('DB_USER', 'custom_user');
+define('DB_PASSWORD', 'secret_pwd');
+define('DB_HOST', 'ols-mariadb');
+`
+	_ = os.WriteFile(filepath.Join(htmlDir, "wp-config.php"), []byte(wpConfig), 0644)
+
+	cfg := &config.Config{SystemDir: tmpDir}
+	mgr := NewManager(cfg)
+
+	info, err := mgr.GetSiteInfo(domain)
+	if err != nil {
+		t.Fatalf("GetSiteInfo failed: %v", err)
+	}
+
+	if info.Domain != domain {
+		t.Errorf("expected domain %s, got %s", domain, info.Domain)
+	}
+	if info.PHPVersion != "8.3" {
+		t.Errorf("expected PHP 8.3, got %s", info.PHPVersion)
+	}
+	if info.DBName != "wp_custom_db" {
+		t.Errorf("expected DBName wp_custom_db, got %s", info.DBName)
+	}
+	if info.DBUser != "custom_user" {
+		t.Errorf("expected DBUser custom_user, got %s", info.DBUser)
+	}
+	if info.DBPassword != "secret_pwd" {
+		t.Errorf("expected DBPassword secret_pwd, got %s", info.DBPassword)
+	}
+	if info.DBHost != "ols-mariadb" {
+		t.Errorf("expected DBHost ols-mariadb, got %s", info.DBHost)
+	}
+}
+

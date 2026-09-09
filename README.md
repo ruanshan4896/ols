@@ -84,7 +84,7 @@ ols
 
   [ QUẢN LÝ WEBSITE ]
    [2] Thêm website WordPress mới (Tự động tải WP core & vhost OLS)
-   [3] Xem danh sách website đang chạy
+   [3] Xem danh sách website & Database (Trạng thái, PHP, Tên DB & User)
    [4] Khởi động lại website (Restart container OLS)
    [5] Xóa website (Xóa container, mã nguồn, database & SSL)
 
@@ -126,9 +126,13 @@ ols site create example.com
 ols site create myblog.vn --php 8.3
 ```
 
-#### Liệt kê danh sách website
+#### Liệt kê danh sách website & Thông tin Database
 ```bash
+# Liệt kê danh sách website kèm thông tin Database và PHP
 ols site list
+
+# Xem toàn bộ thông tin chi tiết cấu hình và cơ sở dữ liệu của một website
+ols site info example.com
 ```
 
 #### Khởi động lại website

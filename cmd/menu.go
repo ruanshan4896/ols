@@ -91,7 +91,7 @@ func PrintMenu(w io.Writer) {
 
 	fmt.Fprintln(w, " "+categoryHeaderStyle.Render("[ QUẢN LÝ WEBSITE ]"))
 	fmt.Fprintf(w, "   %s Thêm website WordPress mới %s\n", itemNumStyle.Render("[2]"), itemDescStyle.Render("(Tự động tải WP core & vhost OLS)"))
-	fmt.Fprintf(w, "   %s Xem danh sách website đang chạy\n", itemNumStyle.Render("[3]"))
+	fmt.Fprintf(w, "   %s Xem danh sách website & Database %s\n", itemNumStyle.Render("[3]"), itemDescStyle.Render("(Trạng thái, PHP, Tên DB & User)"))
 	fmt.Fprintf(w, "   %s Khởi động lại website %s\n", itemNumStyle.Render("[4]"), itemDescStyle.Render("(Restart container OLS)"))
 	fmt.Fprintf(w, "   %s Xóa website %s\n", itemNumStyle.Render("[5]"), itemDescStyle.Render("(Xóa container, mã nguồn, database & SSL)"))
 	fmt.Fprintln(w, "")
@@ -259,22 +259,46 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 			pauseForEnter(reader)
 			return
 		}
-		color.Cyan("\n--- [3] Danh sách website ---")
+		color.Cyan("\n--- [3] Danh sách website & Thông tin Database ---")
 		mgr := site.NewManager(cfg)
 		sites, err := mgr.ListSites()
 		if err != nil {
 			color.Red("Lỗi lấy danh sách: %v", err)
+			pauseForEnter(reader)
 		} else if len(sites) == 0 {
 			color.Yellow("Hiện chưa có website nào được tạo.")
+			pauseForEnter(reader)
 		} else {
 			table := tablewriter.NewWriter(os.Stdout)
-			table.SetHeader([]string{"STT", "Tên miền (Domain)", "Trạng thái", "URL"})
+			table.SetHeader([]string{"STT", "Tên miền (Domain)", "Trạng thái", "PHP", "Database", "DB User", "Mật khẩu DB"})
 			for i, s := range sites {
-				table.Append([]string{fmt.Sprintf("%d", i+1), s.Domain, s.Status, "https://" + s.Domain})
+				statusStr := s.Status
+				if s.Status == "Running" {
+					statusStr = color.GreenString("Running")
+				} else {
+					statusStr = color.RedString("Stopped")
+				}
+				table.Append([]string{
+					fmt.Sprintf("%d", i+1),
+					s.Domain,
+					statusStr,
+					s.PHPVersion,
+					s.DBName,
+					s.DBUser,
+					s.DBPassword,
+				})
 			}
 			table.Render()
+
+			fmt.Println()
+			detailChoice := readInput(reader, "Nhập STT website để xem toàn bộ thông tin chi tiết (hoặc bấm Enter để quay lại)", "")
+			var idx int
+			if _, errScan := fmt.Sscanf(detailChoice, "%d", &idx); errScan == nil && idx >= 1 && idx <= len(sites) {
+				selected := sites[idx-1]
+				PrintSiteDetailedInfo(cfg.SystemDir, &selected)
+				pauseForEnter(reader)
+			}
 		}
-		pauseForEnter(reader)
 
 	case "4":
 		if errCfg != nil {

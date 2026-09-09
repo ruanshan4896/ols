@@ -33,11 +33,15 @@ func init() {
 	RootCmd.AddCommand(menuCmd)
 }
 
+func printOption(key, label string) {
+	fmt.Printf("  %s %s\n", itemNumStyle.Render(key), label)
+}
+
 func readInput(reader *bufio.Reader, prompt string, defaultValue string) string {
 	if defaultValue != "" {
-		fmt.Printf("%s [%s]: ", prompt, defaultValue)
+		fmt.Printf("%s [%s]: ", promptLabelStyle.Render(prompt), promptDefaultStyle.Render(defaultValue))
 	} else {
-		fmt.Printf("%s: ", prompt)
+		fmt.Printf("%s: ", promptLabelStyle.Render(prompt))
 	}
 
 	input, err := reader.ReadString('\n')
@@ -52,7 +56,7 @@ func readInput(reader *bufio.Reader, prompt string, defaultValue string) string 
 }
 
 func pauseForEnter(reader *bufio.Reader) {
-	fmt.Print("\nBấm phím [Enter] để quay lại menu chính...")
+	fmt.Printf("\n%s", promptLabelStyle.Render("Bấm phím [Enter] để quay lại menu chính..."))
 	_, _ = reader.ReadString('\n')
 }
 
@@ -64,57 +68,73 @@ var (
 		BorderForeground(lipgloss.Color("#7952DE")).
 		Padding(0, 3)
 
-	categoryHeaderStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#FF79C6"))
+	coreGroupStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00E5FF"))
+	siteGroupStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#50FA7B"))
+	backupGroupStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#BD93F9"))
+	optGroupStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFB86C"))
+	shieldGroupStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FF5555"))
+	sysGroupStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#8BE9FD"))
 
-	itemNumStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#50FA7B"))
+	itemNumStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#F1FA8C"))
+	itemNameStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#F8F8F2"))
+	itemDescStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#94A3B8"))
 
-	itemDescStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#94A3B8"))
-
-	dividerStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#475569"))
+	promptLabelStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00F0FF"))
+	promptDefaultStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#F1FA8C"))
 )
 
-// PrintMenu in giao diện menu trực quan phân nhóm với khung viền bo góc
+// PrintMenu in giao diện menu trực quan dạng bảng với đầy đủ màu sắc phân nhóm
 func PrintMenu(w io.Writer) {
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, headerBoxStyle.Render("HỆ THỐNG QUẢN TRỊ WORDPRESS & OPENLITESPEED (OLS-CLI)"))
 	fmt.Fprintln(w, "")
 
-	fmt.Fprintln(w, " "+categoryHeaderStyle.Render("[ HẠ TẦNG CỐT LÕI ]"))
-	fmt.Fprintf(w, "   %s Khởi tạo máy chủ VPS %s\n", itemNumStyle.Render("[1]"), itemDescStyle.Render("(Traefik Proxy, MariaDB 11, Redis 7, SSL)"))
-	fmt.Fprintln(w, "")
+	table := tablewriter.NewWriter(w)
+	table.SetHeader([]string{"PHÍM", "NHÓM CHỨC NĂNG", "TÊN CHỨC NĂNG", "MÔ TẢ CHI TIẾT"})
+	table.SetHeaderColor(
+		tablewriter.Colors{tablewriter.Bold, tablewriter.FgHiCyanColor},
+		tablewriter.Colors{tablewriter.Bold, tablewriter.FgHiMagentaColor},
+		tablewriter.Colors{tablewriter.Bold, tablewriter.FgHiGreenColor},
+		tablewriter.Colors{tablewriter.Bold, tablewriter.FgHiWhiteColor},
+	)
+	table.SetBorder(true)
+	table.SetAutoWrapText(false)
+	table.SetAutoMergeCells(true)
+	table.SetRowLine(true)
+	table.SetCenterSeparator("+")
+	table.SetColumnSeparator("|")
+	table.SetRowSeparator("-")
 
-	fmt.Fprintln(w, " "+categoryHeaderStyle.Render("[ QUẢN LÝ WEBSITE ]"))
-	fmt.Fprintf(w, "   %s Thêm website WordPress mới %s\n", itemNumStyle.Render("[2]"), itemDescStyle.Render("(Tự động tải WP core & vhost OLS)"))
-	fmt.Fprintf(w, "   %s Xem danh sách website & Database %s\n", itemNumStyle.Render("[3]"), itemDescStyle.Render("(Trạng thái, PHP, Tên DB & User)"))
-	fmt.Fprintf(w, "   %s Khởi động lại website %s\n", itemNumStyle.Render("[4]"), itemDescStyle.Render("(Restart container OLS)"))
-	fmt.Fprintf(w, "   %s Xóa website %s\n", itemNumStyle.Render("[5]"), itemDescStyle.Render("(Xóa container, mã nguồn, database & SSL)"))
-	fmt.Fprintln(w, "")
+	rows := [][]string{
+		{itemNumStyle.Render("[1]"), coreGroupStyle.Render("HẠ TẦNG CỐT LÕI"), itemNameStyle.Render("Khởi tạo máy chủ VPS"), itemDescStyle.Render("Traefik Proxy, MariaDB 11, Redis 7, SSL")},
 
-	fmt.Fprintln(w, " "+categoryHeaderStyle.Render("[ SAO LƯU & BẢO MẬT ]"))
-	fmt.Fprintf(w, "   %s Sao lưu website %s\n", itemNumStyle.Render("[6]"), itemDescStyle.Render("(Backup 1 site hoặc tất cả website)"))
-	fmt.Fprintf(w, "   %s Khôi phục website từ bản sao lưu %s\n", itemNumStyle.Render("[7]"), itemDescStyle.Render("(Restore .tar.gz)"))
-	fmt.Fprintf(w, "   %s Quản trị Database phpMyAdmin %s\n", itemNumStyle.Render("[8]"), itemDescStyle.Render("(Bật / Tắt qua web port 8080)"))
-	fmt.Fprintf(w, "   %s Kiểm tra trạng thái các container Docker\n", itemNumStyle.Render("[9]"))
-	fmt.Fprintln(w, "")
+		{itemNumStyle.Render("[2]"), siteGroupStyle.Render("QUẢN LÝ WEBSITE"), itemNameStyle.Render("Thêm website WordPress mới"), itemDescStyle.Render("Tự động tải WP core & vhost OLS")},
+		{itemNumStyle.Render("[3]"), siteGroupStyle.Render("QUẢN LÝ WEBSITE"), itemNameStyle.Render("Xem danh sách website & Database"), itemDescStyle.Render("Trạng thái, PHP, Tên DB & User")},
+		{itemNumStyle.Render("[4]"), siteGroupStyle.Render("QUẢN LÝ WEBSITE"), itemNameStyle.Render("Khởi động lại website"), itemDescStyle.Render("Restart container OLS")},
+		{itemNumStyle.Render("[5]"), siteGroupStyle.Render("QUẢN LÝ WEBSITE"), itemNameStyle.Render("Xóa website"), itemDescStyle.Render("Xóa container, mã nguồn, DB & SSL")},
 
-	fmt.Fprintln(w, " "+categoryHeaderStyle.Render("[ TỐI ƯU, GIÁM SÁT & DEBUG ]"))
-	fmt.Fprintf(w, "  %s Đồng bộ cấu hình các website %s\n", itemNumStyle.Render("[10]"), itemDescStyle.Render("(Sync vhost, cache & Traefik)"))
-	fmt.Fprintf(w, "  %s Bảo mật: Làm mới Salt Keys & Đổi pass Admin %s\n", itemNumStyle.Render("[11]"), itemDescStyle.Render("(WordPress.org API)"))
-	fmt.Fprintf(w, "  %s Quản lý bộ nhớ Swap RAM %s\n", itemNumStyle.Render("[12]"), itemDescStyle.Render("(Tạo Swap 2-8GB chống sập VPS)"))
-	fmt.Fprintf(w, "  %s Đánh giá tải VPS & Tính số website có thể cài thêm\n", itemNumStyle.Render("[13]"))
-	fmt.Fprintf(w, "  %s Xem nhật ký lỗi & Hỗ trợ Debug %s\n", itemNumStyle.Render("[14]"), itemDescStyle.Render("(Traefik, DB, PHP Error & Quét lỗi)"))
-	fmt.Fprintf(w, "  %s Lá chắn bảo vệ OLS Shield %s\n", itemNumStyle.Render("[15]"), itemDescStyle.Render("(Chống brute-force, khóa XML-RPC & Uploads)"))
-	fmt.Fprintln(w, "")
+		{itemNumStyle.Render("[6]"), backupGroupStyle.Render("SAO LƯU & BẢO MẬT"), itemNameStyle.Render("Sao lưu website"), itemDescStyle.Render("Backup 1 site hoặc tất cả website")},
+		{itemNumStyle.Render("[7]"), backupGroupStyle.Render("SAO LƯU & BẢO MẬT"), itemNameStyle.Render("Khôi phục website"), itemDescStyle.Render("Restore từ file .tar.gz")},
+		{itemNumStyle.Render("[8]"), backupGroupStyle.Render("SAO LƯU & BẢO MẬT"), itemNameStyle.Render("Quản trị Database phpMyAdmin"), itemDescStyle.Render("Bật / Tắt qua web port 8080")},
+		{itemNumStyle.Render("[9]"), backupGroupStyle.Render("SAO LƯU & BẢO MẬT"), itemNameStyle.Render("Kiểm tra container Docker"), itemDescStyle.Render("Xem trạng thái CPU / RAM / Uptime")},
 
-	fmt.Fprintln(w, " "+categoryHeaderStyle.Render("[ HỆ THỐNG ]"))
-	fmt.Fprintf(w, "   %s Thoát\n", itemNumStyle.Render("[0]"))
-	fmt.Fprintln(w, dividerStyle.Render("───────────────────────────────────────────────────────────────────"))
+		{itemNumStyle.Render("[10]"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemNameStyle.Render("Đồng bộ cấu hình website"), itemDescStyle.Render("Sync vhost, cache & Traefik")},
+		{itemNumStyle.Render("[11]"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemNameStyle.Render("Bảo mật Salts & Đổi pass Admin"), itemDescStyle.Render("WordPress.org API")},
+		{itemNumStyle.Render("[12]"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemNameStyle.Render("Quản lý bộ nhớ Swap RAM"), itemDescStyle.Render("Tạo Swap 2-8GB chống sập VPS")},
+		{itemNumStyle.Render("[13]"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemNameStyle.Render("Đánh giá tải VPS"), itemDescStyle.Render("Tính số website có thể cài thêm")},
+		{itemNumStyle.Render("[14]"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemNameStyle.Render("Xem nhật ký lỗi & Debug"), itemDescStyle.Render("Traefik, DB, PHP Error & Quét lỗi")},
+
+		{itemNumStyle.Render("[15]"), shieldGroupStyle.Render("BẢO VỆ TOÀN DIỆN"), itemNameStyle.Render("Lá chắn bảo vệ OLS Shield"), itemDescStyle.Render("Chống brute-force, khóa XML-RPC & Uploads")},
+
+		{itemNumStyle.Render("[0]"), sysGroupStyle.Render("HỆ THỐNG"), itemNameStyle.Render("Thoát"), itemDescStyle.Render("Đóng trình quản trị OLS-CLI")},
+	}
+
+	for _, r := range rows {
+		table.Append(r)
+	}
+
+	table.Render()
+	fmt.Fprintln(w, "")
 }
 
 func RunInteractiveMenu(r io.Reader, w io.Writer) error {
@@ -160,8 +180,8 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 			return
 		}
 		color.Cyan("\n--- [2] Thêm website WordPress mới ---")
-		fmt.Println("  [1] Thêm 1 website đơn lẻ")
-		fmt.Println("  [2] Thêm nhiều website từ file TXT")
+		printOption("[1]", "Thêm 1 website đơn lẻ")
+		printOption("[2]", "Thêm nhiều website từ file TXT")
 		fmt.Println()
 		mode := readInput(reader, "Nhập lựa chọn của bạn [1-2]", "1")
 		mgr := site.NewManager(cfg)
@@ -357,8 +377,8 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 			return
 		}
 		color.Cyan("\n--- [6] Sao lưu website (Backup) ---")
-		fmt.Println("  [1] Sao lưu 1 website cụ thể")
-		fmt.Println("  [2] Sao lưu TẤT CẢ website")
+		printOption("[1]", "Sao lưu 1 website cụ thể")
+		printOption("[2]", "Sao lưu TẤT CẢ website")
 		fmt.Println()
 		sub := readInput(reader, "Nhập lựa chọn của bạn [1-2]", "1")
 		bm := backup.NewBackupManager(cfg)
@@ -439,8 +459,8 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 			return
 		}
 		color.Cyan("\n--- [8] Quản trị phpMyAdmin ---")
-		fmt.Println("  [1] Bật phpMyAdmin (Port 8080)")
-		fmt.Println("  [2] Tắt phpMyAdmin")
+		printOption("[1]", "Bật phpMyAdmin (Port 8080)")
+		printOption("[2]", "Tắt phpMyAdmin")
 		fmt.Println()
 		subChoice := readInput(reader, "Nhập lựa chọn của bạn [1-2]", "1")
 		if subChoice == "1" {
@@ -466,8 +486,8 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 			return
 		}
 		color.Cyan("\n--- [10] Đồng bộ cấu hình các website ---")
-		fmt.Println("  [1] Đồng bộ 1 website cụ thể")
-		fmt.Println("  [2] Đồng bộ TẤT CẢ website")
+		printOption("[1]", "Đồng bộ 1 website cụ thể")
+		printOption("[2]", "Đồng bộ TẤT CẢ website")
 		fmt.Println()
 		sub := readInput(reader, "Nhập lựa chọn của bạn [1-2]", "2")
 		mgr := site.NewManager(cfg)
@@ -515,8 +535,8 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 			return
 		}
 		color.Cyan("\n--- [11] Bảo mật: Làm mới Salt Keys & Đổi mật khẩu Admin ---")
-		fmt.Println("  [1] Bảo mật 1 website cụ thể")
-		fmt.Println("  [2] Bảo mật TẤT CẢ website")
+		printOption("[1]", "Bảo mật 1 website cụ thể")
+		printOption("[2]", "Bảo mật TẤT CẢ website")
 		fmt.Println()
 		sub := readInput(reader, "Nhập lựa chọn của bạn [1-2]", "1")
 		mgr := site.NewManager(cfg)
@@ -529,9 +549,9 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 				return
 			}
 			fmt.Println("Chọn tác vụ:")
-			fmt.Println("  [1] Cả hai (Làm mới Salts & Đổi Pass)")
-			fmt.Println("  [2] Chỉ làm mới Salts")
-			fmt.Println("  [3] Chỉ đổi Pass")
+			printOption("[1]", "Cả hai (Làm mới Salts & Đổi Pass)")
+			printOption("[2]", "Chỉ làm mới Salts")
+			printOption("[3]", "Chỉ đổi Pass")
 			fmt.Println()
 			optType := readInput(reader, "Nhập lựa chọn của bạn [1-3]", "1")
 
@@ -571,9 +591,9 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 			}
 
 			fmt.Println("Chọn tác vụ:")
-			fmt.Println("  [1] Cả hai (Làm mới Salts & Đổi Pass)")
-			fmt.Println("  [2] Chỉ làm mới Salts")
-			fmt.Println("  [3] Chỉ đổi Pass")
+			printOption("[1]", "Cả hai (Làm mới Salts & Đổi Pass)")
+			printOption("[2]", "Chỉ làm mới Salts")
+			printOption("[3]", "Chỉ đổi Pass")
 			fmt.Println()
 			optType := readInput(reader, "Nhập lựa chọn của bạn [1-3]", "1")
 			globalPass := ""
@@ -618,8 +638,8 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 			fmt.Println()
 		}
 
-		fmt.Println("  [1] Tạo mới / Thay đổi dung lượng Swap")
-		fmt.Println("  [2] Tắt và xóa Swap")
+		printOption("[1]", "Tạo mới / Thay đổi dung lượng Swap")
+		printOption("[2]", "Tắt và xóa Swap")
 		fmt.Println()
 		sub := readInput(reader, "Nhập lựa chọn của bạn [1-2]", "1")
 		if sub == "1" {
@@ -668,13 +688,13 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 	case "14":
 		color.Cyan("\n--- [14] Xem nhật ký lỗi & Hỗ trợ Debug ---")
 		color.New(color.FgWhite, color.Bold).Println("Chọn dịch vụ hoặc thành phần cần kiểm tra lỗi:")
-		fmt.Println("  [1] Traefik Reverse Proxy & SSL (Lỗi chứng chỉ SSL, 502 Bad Gateway)")
-		fmt.Println("  [2] MariaDB Database (Lỗi kết nối cơ sở dữ liệu, crash)")
-		fmt.Println("  [3] Redis Cache (Lỗi bộ nhớ đệm, connection refused)")
-		fmt.Println("  [4] Xem lỗi của một Website cụ thể (PHP Fatal, 500, lỗi plugin)")
-		fmt.Println("  [5] QUÉT NHANH TOÀN HỆ THỐNG (Tự động lọc các lỗi gần nhất)")
-		fmt.Println("  [6] XÓA TOÀN BỘ NHẬT KÝ CŨ (Reset log Docker & Web về 0 byte)")
-		fmt.Println("  [0] Quay lại")
+		printOption("[1]", "Traefik Reverse Proxy & SSL (Lỗi chứng chỉ SSL, 502 Bad Gateway)")
+		printOption("[2]", "MariaDB Database (Lỗi kết nối cơ sở dữ liệu, crash)")
+		printOption("[3]", "Redis Cache (Lỗi bộ nhớ đệm, connection refused)")
+		printOption("[4]", "Xem lỗi của một Website cụ thể (PHP Fatal, 500, lỗi plugin)")
+		printOption("[5]", "QUÉT NHANH TOÀN HỆ THỐNG (Tự động lọc các lỗi gần nhất)")
+		printOption("[6]", "XÓA TOÀN BỘ NHẬT KÝ CŨ (Reset log Docker & Web về 0 byte)")
+		printOption("[0]", "Quay lại")
 		fmt.Println()
 
 		subChoice := readInput(reader, "Nhập lựa chọn của bạn [0-6]", "5")

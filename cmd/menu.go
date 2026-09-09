@@ -90,11 +90,11 @@ func PrintMenu(w io.Writer) {
 	fmt.Fprintln(w, "")
 
 	table := tablewriter.NewWriter(w)
-	table.SetHeader([]string{"PHÍM", "NHÓM CHỨC NĂNG", "TÊN CHỨC NĂNG", "MÔ TẢ CHI TIẾT"})
+	table.SetHeader([]string{"PHÍM", "TÊN CHỨC NĂNG", "CHUYÊN MỤC", "MÔ TẢ CHI TIẾT"})
 	table.SetHeaderColor(
 		tablewriter.Colors{tablewriter.Bold, tablewriter.FgHiCyanColor},
-		tablewriter.Colors{tablewriter.Bold, tablewriter.FgHiMagentaColor},
 		tablewriter.Colors{tablewriter.Bold, tablewriter.FgHiGreenColor},
+		tablewriter.Colors{tablewriter.Bold, tablewriter.FgHiMagentaColor},
 		tablewriter.Colors{tablewriter.Bold, tablewriter.FgHiWhiteColor},
 	)
 	table.SetBorder(true)
@@ -106,27 +106,27 @@ func PrintMenu(w io.Writer) {
 	table.SetRowSeparator("-")
 
 	rows := [][]string{
-		{itemNumStyle.Render("[1]"), coreGroupStyle.Render("HẠ TẦNG CỐT LÕI"), itemNameStyle.Render("Khởi tạo máy chủ VPS"), itemDescStyle.Render("Traefik Proxy, MariaDB 11, Redis 7, SSL")},
+		{itemNumStyle.Render("[1]"), itemNameStyle.Render("Khởi tạo máy chủ VPS"), coreGroupStyle.Render("HẠ TẦNG CỐT LÕI"), itemDescStyle.Render("Traefik Proxy, MariaDB 11, Redis 7, SSL")},
 
-		{itemNumStyle.Render("[2]"), siteGroupStyle.Render("QUẢN LÝ WEBSITE"), itemNameStyle.Render("Thêm website WordPress mới"), itemDescStyle.Render("Tự động tải WP core & vhost OLS")},
-		{itemNumStyle.Render("[3]"), siteGroupStyle.Render("QUẢN LÝ WEBSITE"), itemNameStyle.Render("Xem danh sách website & Database"), itemDescStyle.Render("Trạng thái, PHP, Tên DB & User")},
-		{itemNumStyle.Render("[4]"), siteGroupStyle.Render("QUẢN LÝ WEBSITE"), itemNameStyle.Render("Khởi động lại website"), itemDescStyle.Render("Restart container OLS")},
-		{itemNumStyle.Render("[5]"), siteGroupStyle.Render("QUẢN LÝ WEBSITE"), itemNameStyle.Render("Xóa website"), itemDescStyle.Render("Xóa container, mã nguồn, DB & SSL")},
+		{itemNumStyle.Render("[2]"), itemNameStyle.Render("Thêm website WordPress mới"), siteGroupStyle.Render("QUẢN LÝ WEBSITE"), itemDescStyle.Render("Tự động tải WP core & vhost OLS")},
+		{itemNumStyle.Render("[3]"), itemNameStyle.Render("Xem danh sách website & Database"), siteGroupStyle.Render("QUẢN LÝ WEBSITE"), itemDescStyle.Render("Trạng thái, PHP, Tên DB & User")},
+		{itemNumStyle.Render("[4]"), itemNameStyle.Render("Khởi động lại website"), siteGroupStyle.Render("QUẢN LÝ WEBSITE"), itemDescStyle.Render("Restart container OLS")},
+		{itemNumStyle.Render("[5]"), itemNameStyle.Render("Xóa website"), siteGroupStyle.Render("QUẢN LÝ WEBSITE"), itemDescStyle.Render("Xóa container, mã nguồn, DB & SSL")},
 
-		{itemNumStyle.Render("[6]"), backupGroupStyle.Render("SAO LƯU & BẢO MẬT"), itemNameStyle.Render("Sao lưu website"), itemDescStyle.Render("Backup 1 site hoặc tất cả website")},
-		{itemNumStyle.Render("[7]"), backupGroupStyle.Render("SAO LƯU & BẢO MẬT"), itemNameStyle.Render("Khôi phục website"), itemDescStyle.Render("Restore từ file .tar.gz")},
-		{itemNumStyle.Render("[8]"), backupGroupStyle.Render("SAO LƯU & BẢO MẬT"), itemNameStyle.Render("Quản trị Database phpMyAdmin"), itemDescStyle.Render("Bật / Tắt qua web port 8080")},
-		{itemNumStyle.Render("[9]"), backupGroupStyle.Render("SAO LƯU & BẢO MẬT"), itemNameStyle.Render("Kiểm tra container Docker"), itemDescStyle.Render("Xem trạng thái CPU / RAM / Uptime")},
+		{itemNumStyle.Render("[6]"), itemNameStyle.Render("Sao lưu website"), backupGroupStyle.Render("SAO LƯU & BẢO MẬT"), itemDescStyle.Render("Backup 1 site hoặc tất cả website")},
+		{itemNumStyle.Render("[7]"), itemNameStyle.Render("Khôi phục website"), backupGroupStyle.Render("SAO LƯU & BẢO MẬT"), itemDescStyle.Render("Restore từ file .tar.gz")},
+		{itemNumStyle.Render("[8]"), itemNameStyle.Render("Quản trị Database phpMyAdmin"), backupGroupStyle.Render("SAO LƯU & BẢO MẬT"), itemDescStyle.Render("Bật / Tắt qua web port 8080")},
+		{itemNumStyle.Render("[9]"), itemNameStyle.Render("Kiểm tra container Docker"), backupGroupStyle.Render("SAO LƯU & BẢO MẬT"), itemDescStyle.Render("Xem trạng thái CPU / RAM / Uptime")},
 
-		{itemNumStyle.Render("[10]"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemNameStyle.Render("Đồng bộ cấu hình website"), itemDescStyle.Render("Sync vhost, cache & Traefik")},
-		{itemNumStyle.Render("[11]"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemNameStyle.Render("Bảo mật Salts & Đổi pass Admin"), itemDescStyle.Render("WordPress.org API")},
-		{itemNumStyle.Render("[12]"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemNameStyle.Render("Quản lý bộ nhớ Swap RAM"), itemDescStyle.Render("Tạo Swap 2-8GB chống sập VPS")},
-		{itemNumStyle.Render("[13]"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemNameStyle.Render("Đánh giá tải VPS"), itemDescStyle.Render("Tính số website có thể cài thêm")},
-		{itemNumStyle.Render("[14]"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemNameStyle.Render("Xem nhật ký lỗi & Debug"), itemDescStyle.Render("Traefik, DB, PHP Error & Quét lỗi")},
+		{itemNumStyle.Render("[10]"), itemNameStyle.Render("Đồng bộ cấu hình website"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemDescStyle.Render("Sync vhost, cache & Traefik")},
+		{itemNumStyle.Render("[11]"), itemNameStyle.Render("Bảo mật Salts & đổi pass Admin"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemDescStyle.Render("WordPress.org API")},
+		{itemNumStyle.Render("[12]"), itemNameStyle.Render("Quản lý bộ nhớ Swap RAM"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemDescStyle.Render("Tạo Swap 2-8GB chống sập VPS")},
+		{itemNumStyle.Render("[13]"), itemNameStyle.Render("Đánh giá tải VPS"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemDescStyle.Render("Tính số website có thể cài thêm")},
+		{itemNumStyle.Render("[14]"), itemNameStyle.Render("Xem nhật ký lỗi & Debug"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemDescStyle.Render("Traefik, DB, PHP Error & Quét lỗi")},
 
-		{itemNumStyle.Render("[15]"), shieldGroupStyle.Render("BẢO VỆ TOÀN DIỆN"), itemNameStyle.Render("Lá chắn bảo vệ OLS Shield"), itemDescStyle.Render("Chống brute-force, khóa XML-RPC & Uploads")},
+		{itemNumStyle.Render("[15]"), itemNameStyle.Render("Lá chắn bảo vệ OLS Shield"), shieldGroupStyle.Render("BẢO VỆ TOÀN DIỆN"), itemDescStyle.Render("Chống brute-force, khóa XML-RPC & Uploads")},
 
-		{itemNumStyle.Render("[0]"), sysGroupStyle.Render("HỆ THỐNG"), itemNameStyle.Render("Thoát"), itemDescStyle.Render("Đóng trình quản trị OLS-CLI")},
+		{itemNumStyle.Render("[0]"), itemNameStyle.Render("Thoát"), sysGroupStyle.Render("HỆ THỐNG"), itemDescStyle.Render("Đóng trình quản trị OLS-CLI")},
 	}
 
 	for _, r := range rows {

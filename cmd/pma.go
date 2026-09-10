@@ -45,6 +45,8 @@ var pmaEnableCmd = &cobra.Command{
 			"--restart", "always",
 			"--network", targetNetwork,
 			"-p", fmt.Sprintf("%d:80", pmaPort),
+			"--memory", "256m",
+			"--cpus", "1.0",
 			"-e", "PMA_HOST=ols-mariadb",
 			"phpmyadmin:latest",
 		)

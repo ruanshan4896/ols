@@ -74,3 +74,23 @@ if ( ! defined( 'ABSPATH' ) ) {
 		t.Errorf("New salts missing in wp-config.php: %s", updatedContent)
 	}
 }
+
+func TestGetSitePHPBinary(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.Config{SystemDir: tmpDir}
+	mgr := NewManager(cfg)
+
+	// Case 1: Site with PHP 8.3 compose
+	siteDir83 := filepath.Join(tmpDir, "sites", "site83.com")
+	_ = os.MkdirAll(siteDir83, 0755)
+	_ = os.WriteFile(filepath.Join(siteDir83, "docker-compose.yml"), []byte("services:\n  ols:\n    image: litespeedtech/openlitespeed:1.8.2-lsphp83\n"), 0644)
+	if bin := mgr.GetSitePHPBinary("site83.com"); bin != "/usr/local/lsws/lsphp83/bin/php" {
+		t.Errorf("expected /usr/local/lsws/lsphp83/bin/php, got %s", bin)
+	}
+
+	// Case 2: Default fallback to 8.2
+	if bin := mgr.GetSitePHPBinary("nonexistent.com"); bin != "/usr/local/lsws/lsphp82/bin/php" {
+		t.Errorf("expected default /usr/local/lsws/lsphp82/bin/php, got %s", bin)
+	}
+}
+

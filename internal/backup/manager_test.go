@@ -1,6 +1,9 @@
 package backup
 
 import (
+	"archive/tar"
+	"compress/gzip"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -61,3 +64,47 @@ func TestBackupAllSitesProgress(t *testing.T) {
 		t.Fatalf("expected 2 progress reports, got: %v", progressReports)
 	}
 }
+
+func TestBackupExcludesLogs(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.Config{SystemDir: tmpDir}
+	bm := NewBackupManager(cfg)
+
+	site := filepath.Join(tmpDir, "sites", "logsite.com")
+	_ = os.MkdirAll(filepath.Join(site, "html"), 0755)
+	_ = os.WriteFile(filepath.Join(site, "html", "index.html"), []byte("content"), 0644)
+	_ = os.MkdirAll(filepath.Join(site, "logs"), 0755)
+	_ = os.WriteFile(filepath.Join(site, "logs", "access.log"), []byte("huge log data"), 0644)
+
+	tarPath, err := bm.BackupSite("logsite.com")
+	if err != nil {
+		t.Fatalf("BackupSite failed: %v", err)
+	}
+
+	f, err := os.Open(tarPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	gr, err := gzip.NewReader(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gr.Close()
+	tr := tar.NewReader(gr)
+
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if hdr.Name == "logs" || strings.HasPrefix(hdr.Name, "logs/") {
+			t.Errorf("expected backup to exclude logs directory, but found: %s", hdr.Name)
+		}
+	}
+}
+

@@ -89,6 +89,20 @@ func (m *Manager) RegenerateSalts(domain string) (bool, error) {
 	return true, nil
 }
 
+// GetSitePHPBinary trả về đường dẫn chính xác của binary LSPHP bên trong container của website
+func (m *Manager) GetSitePHPBinary(domain string) string {
+	phpShort := "82"
+	siteDir := filepath.Join(m.cfg.SystemDir, "sites", domain)
+	composePath := filepath.Join(siteDir, "docker-compose.yml")
+	if content, err := os.ReadFile(composePath); err == nil {
+		re := regexp.MustCompile(`lsphp(8[1-3])`)
+		if match := re.FindStringSubmatch(string(content)); len(match) > 1 {
+			phpShort = match[1]
+		}
+	}
+	return fmt.Sprintf("/usr/local/lsws/lsphp%s/bin/php", phpShort)
+}
+
 // ResetAdminPassword đặt lại mật khẩu cho tài khoản quản trị WordPress.
 // Nếu username rỗng, hàm tự động phát hiện tài khoản Administrator đầu tiên trong database.
 func (m *Manager) ResetAdminPassword(domain string, username string, newPassword string) (string, error) {
@@ -138,9 +152,14 @@ if ($user) {
 }
 `, escapedUser, escapedPass)
 
-	out, err := m.dm.ExecInContainer(containerName, "php", "-r", phpScript)
+	phpBin := m.GetSitePHPBinary(domain)
+	out, err := m.dm.ExecInContainer(containerName, phpBin, "-r", phpScript)
 	if err != nil {
-		return "", fmt.Errorf("lỗi thực thi đổi mật khẩu trong container: %s (%w)", out, err)
+		// Fallback sang "php" nếu phpBin không tìm thấy
+		out, err = m.dm.ExecInContainer(containerName, "php", "-r", phpScript)
+		if err != nil {
+			return "", fmt.Errorf("lỗi thực thi đổi mật khẩu trong container: %s (%w)", out, err)
+		}
 	}
 
 	trimmedOut := strings.TrimSpace(out)

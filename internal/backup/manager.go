@@ -2,6 +2,7 @@ package backup
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/ols-cli/ols/internal/config"
@@ -42,25 +44,40 @@ func (b *BackupManager) BackupSite(domain string) (string, error) {
 	slug := site.DomainToSlug(domain)
 	dbName := "wp_" + slug
 
-	// 1. Xuất database qua container MariaDB bằng streaming trực tiếp ra file
+	// 1. Xuất database qua container MariaDB bằng streaming trực tiếp ra file nếu MariaDB đang chạy
 	sqlDumpPath := filepath.Join(siteDir, "database.sql")
-	dumpFile, errCreate := os.Create(sqlDumpPath)
-	if errCreate == nil {
+	if b.dm.IsContainerRunning("ols-mariadb") {
+		dumpFile, errCreate := os.Create(sqlDumpPath)
+		if errCreate != nil {
+			return "", fmt.Errorf("không thể tạo file dump tạm: %w", errCreate)
+		}
+
 		dumpCmd := exec.Command("docker", "exec", "ols-mariadb", "mariadb-dump", "-uroot", "-p"+b.cfg.DBRootPassword, dbName)
+		var errDumpBuf bytes.Buffer
 		dumpCmd.Stdout = dumpFile
-		_ = dumpCmd.Run()
+		dumpCmd.Stderr = &errDumpBuf
+		errDump := dumpCmd.Run()
 		dumpFile.Close()
+
+		if errDump != nil {
+			_ = os.Remove(sqlDumpPath)
+			return "", fmt.Errorf("lỗi khi xuất database %s: %s (%w)", dbName, strings.TrimSpace(errDumpBuf.String()), errDump)
+		}
+	} else if b.cfg.DBRootPassword != "" {
+		return "", fmt.Errorf("container cơ sở dữ liệu 'ols-mariadb' chưa khởi chạy, không thể sao lưu database")
 	}
 
 	// 2. Tạo file tar.gz
 	backupDir := filepath.Join(b.cfg.SystemDir, "backups", domain)
 	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		_ = os.Remove(sqlDumpPath)
 		return "", err
 	}
 
 	tarPath := filepath.Join(backupDir, FormatBackupFilename(domain, time.Now()))
 	tarFile, err := os.Create(tarPath)
 	if err != nil {
+		_ = os.Remove(sqlDumpPath)
 		return "", err
 	}
 	defer tarFile.Close()
@@ -79,11 +96,20 @@ func (b *BackupManager) BackupSite(domain string) (string, error) {
 			return nil
 		}
 
+		slashRel := filepath.ToSlash(relPath)
+		// Bỏ qua thư mục logs/ để không làm phình to file backup
+		if slashRel == "logs" || strings.HasPrefix(slashRel, "logs/") {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
 		header, err := tar.FileInfoHeader(info, info.Name())
 		if err != nil {
 			return err
 		}
-		header.Name = filepath.ToSlash(relPath)
+		header.Name = slashRel
 
 		if err := tw.WriteHeader(header); err != nil {
 			return err
@@ -209,14 +235,29 @@ func (b *BackupManager) RestoreSite(domain string, backupFile string) error {
 	// 2. Nếu có database.sql, nạp vào MariaDB bằng streaming stdin (hỗ trợ DB dung lượng lớn)
 	sqlDumpPath := filepath.Join(siteDir, "database.sql")
 	if _, err := os.Stat(sqlDumpPath); err == nil {
-		sqlFile, errOpen := os.Open(sqlDumpPath)
-		if errOpen == nil {
+		if b.dm.IsContainerRunning("ols-mariadb") {
+			sqlFile, errOpen := os.Open(sqlDumpPath)
+			if errOpen != nil {
+				_ = os.Remove(sqlDumpPath)
+				return fmt.Errorf("mở file database.sql để phục hồi thất bại: %w", errOpen)
+			}
+			var errImportBuf bytes.Buffer
 			importCmd := exec.Command("docker", "exec", "-i", "ols-mariadb", "mariadb", "-uroot", "-p"+b.cfg.DBRootPassword, dbName)
 			importCmd.Stdin = sqlFile
-			_ = importCmd.Run()
+			importCmd.Stderr = &errImportBuf
+			errImport := importCmd.Run()
 			sqlFile.Close()
+			_ = os.Remove(sqlDumpPath)
+
+			if errImport != nil {
+				return fmt.Errorf("lỗi phục hồi cơ sở dữ liệu %s: %s (%w)", dbName, strings.TrimSpace(errImportBuf.String()), errImport)
+			}
+		} else {
+			_ = os.Remove(sqlDumpPath)
+			if b.cfg.DBRootPassword != "" {
+				return fmt.Errorf("container 'ols-mariadb' chưa khởi chạy, không thể phục hồi database")
+			}
 		}
-		_ = os.Remove(sqlDumpPath)
 	}
 
 	// 3. Đảm bảo file .htaccess tồn tại để rewrite permalinks không bị 404

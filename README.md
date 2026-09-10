@@ -86,26 +86,31 @@ ols
    [2] Thêm website WordPress mới (Tự động tải WP core & vhost OLS)
    [3] Xem danh sách website & Database (Trạng thái, PHP, Tên DB & User)
    [4] Khởi động lại website (Restart container OLS)
-   [5] Xóa website (Xóa container, mã nguồn, database & SSL)
+   [5] Xóa website (Xóa container, mã nguồn, DB & SSL)
 
   [ SAO LƯU & BẢO MẬT ]
    [6] Sao lưu website (Backup 1 site hoặc tất cả website)
-   [7] Khôi phục website từ bản sao lưu (Restore .tar.gz)
+   [7] Khôi phục website (Restore từ file .tar.gz)
    [8] Quản trị Database phpMyAdmin (Bật / Tắt qua web port 8080)
-   [9] Kiểm tra trạng thái các container Docker
+   [9] Kiểm tra container Docker (Xem trạng thái CPU / RAM / Uptime)
 
-  [ TỐI ƯU, GIÁM SÁT & DEBUG ]
-  [10] Đồng bộ cấu hình các website (Sync vhost, cache & Traefik)
-  [11] Bảo mật: Làm mới Salt Keys & Đổi pass Admin (WordPress.org API)
+  [ TỐI ƯU & DEBUG ]
+  [10] Đồng bộ cấu hình website (Sync vhost, cache & Traefik)
+  [11] Bảo mật Salts & đổi pass Admin (WordPress.org API)
   [12] Quản lý bộ nhớ Swap RAM (Tạo Swap 2-8GB chống sập VPS)
-  [13] Đánh giá tải VPS & Tính số website có thể cài thêm
-  [14] Xem nhật ký lỗi & Hỗ trợ Debug (Traefik, DB, PHP Error & Quét lỗi)
+  [13] Đánh giá tải VPS (Tính số website có thể cài thêm)
+  [14] Xem nhật ký lỗi & Debug (Traefik, DB, PHP Error & Quét lỗi)
+
+  [ BẢO VỆ TOÀN DIỆN ]
   [15] Lá chắn bảo vệ OLS Shield (Chống brute-force, khóa XML-RPC & Uploads)
+
+  [ ĐIỀU HƯỚNG TRAFFIC ]
+  [16] Quản lý Redirect 301 / 302 (Redirect domain 301, URL, test & xóa)
 
   [ HỆ THỐNG ]
    [0] Thoát
 ─────────────────────────────────────────────────────────────────────
-Nhập lựa chọn của bạn [0-15]: 
+Nhập lựa chọn của bạn [0-16]: 
 ```
 
 ---
@@ -253,6 +258,25 @@ ols shield disable example.com
 ols shield disable --all
 ```
 
+#### Quản lý Điều hướng Redirect 301 / 302 (`redirect`)
+Hỗ trợ chuyển hướng tên miền hoặc đường dẫn URL chuẩn SEO ngay tại tầng Traefik Gateway hoặc file `.htaccess`:
+```bash
+# Xem danh sách các quy tắc redirect của website
+ols redirect list example.com
+
+# Tạo chuyển hướng toàn bộ domain (ví dụ: old.com sang new.com)
+ols redirect add old.com --target https://new.com --code 301
+
+# Tạo chuyển hướng một đường dẫn URL cụ thể
+ols redirect add example.com --from /bai-viet-cu --to /bai-viet-moi --code 301
+
+# Kiểm tra phản hồi HTTP code và URL đích của một đường dẫn redirect
+ols redirect test example.com /bai-viet-cu
+
+# Xóa một quy tắc redirect theo số thứ tự
+ols redirect remove example.com 1
+```
+
 ---
 
 ## 4. Tính Cô Lập & Bảo Mật Giữa Các Website (Isolation Security)
@@ -273,7 +297,8 @@ Hệ thống được thiết kế theo mô hình **Multi-Tenant Isolation** đ�
 
 4. **Cô lập Bộ nhớ Đệm Redis (Object Cache Isolation):**
    * Sử dụng cụm Redis 7 dùng chung (`ols-redis`) với cấu hình bộ nhớ LRU an toàn.
-   * Mỗi website được gán tiền tố key riêng biệt thông qua `define('WP_CACHE_KEY_SALT', '<slug>:')` trong `wp-config.php`, ngăn chặn hoàn toàn việc nhầm lẫn hoặc đè cache giữa các website.
+   * Mỗi website được cấp phát một **Database ID riêng biệt (từ 0 đến 255)** lưu cố định trong file `.env` và `define('WP_REDIS_DATABASE', <id>)`, kết hợp tiền tố `define('WP_CACHE_KEY_SALT', '<slug>:')` trong `wp-config.php`.
+   * Lệnh xóa cache chỉ thực hiện `FLUSHDB` trên đúng database ID của website đó, hoàn toàn không làm ảnh hưởng hay xóa nhầm cache của các website khác trên VPS.
 
 5. **Phân quyền người dùng an toàn (Least Privilege):**
    * Bên trong container, OpenLiteSpeed thực thi dưới tài khoản hệ thống `nobody:nogroup` (UID `65534`). Không chạy mã PHP dưới quyền `root`, triệt tiêu nguy cơ chiếm quyền điều khiển VPS từ mã nguồn WordPress.
@@ -283,13 +308,19 @@ Hệ thống được thiết kế theo mô hình **Multi-Tenant Isolation** đ�
      - **Frontend Network (`ols-network`):** Chỉ chứa `ols-traefik` tiếp nhận request từ bên ngoài và chuyển tiếp traffic HTTP tới các container website (`ols_<slug>`).
      - **Backend Network (`ols-backend-network`):** Chứa `ols-mariadb` và `ols-redis`. Tuyệt đối không expose ra ngoài Internet và không nằm chung mạng frontend với Traefik.
    * Các container website (`ols_<slug>`) kết nối vào cả hai mạng (nhận traffic từ Traefik qua frontend và truy vấn Database/Redis qua backend). Traefik được chỉ định rõ `traefik.docker.network=ols-network` để đảm bảo định tuyến chính xác.
-   * Container quản trị phpMyAdmin (`ols-pma`) chỉ kết nối vào Backend Network khi được bật, triệt tiêu tối đa nguy cơ rò rỉ database.
+   * Container quản trị phpMyAdmin (`ols-pma`) chỉ kết nối vào Backend Network khi được bật và được giới hạn cứng `--memory 256m --cpus 1.0` phòng chống quá tải tài nguyên VPS.
 
-7. **Tự động Ép HTTPS & Bộ Security Headers chuẩn A+:**
+7. **Tối ưu Hóa Tài Nguyên Chuyên Sâu (Resource Tuning):**
+   * **PHP Workers Tiết Kiệm RAM:** Tinh chỉnh mặc định `PHP_LSAPI_CHILDREN: 3` kết hợp `mem_limit: 384m` ngăn ngừa hiện tượng Docker kernel OOM-kill khi có tải đồng thời.
+   * **Tối ưu OPcache:** Đặt mức tiêu thụ bộ nhớ OPcache chuẩn xác 32MB/site cho vhost blog, vừa đảm bảo tốc độ bytecode cực nhanh vừa tiết kiệm RAM đáng kể.
+   * **Triệt tiêu bão Loopback WP-Cron:** Tự động tiêm `define( 'DISABLE_WP_CRON', true );` vào `wp-config.php`, ngăn chặn bot/crawler kích hoạt các tiến trình chạy ngầm làm tăng đột biến RAM.
+   * **WordPress Core Download Caching:** Tự động lưu bản nén `/opt/ols/cache/wordpress.tar.gz` trong 7 ngày, cho phép tạo site mới gần như tức thì mà không phải tải lại qua mạng quốc tế, đồng thời bảo vệ chống xung đột khi tạo nhiều site cùng lúc.
+
+8. **Tự động Ép HTTPS & Bộ Security Headers chuẩn A+:**
    * Traefik Gateway tự động chuyển hướng 301 toàn bộ traffic HTTP (port 80) sang HTTPS (port 443).
    * Tự động gắn các security headers tiêu chuẩn: `Strict-Transport-Security` (HSTS 1 năm, preload), `X-Frame-Options: SAMEORIGIN` (chống Clickjacking), `X-Content-Type-Options: nosniff`, và `Referrer-Policy: strict-origin-when-cross-origin`.
 
-8. **Tối ưu Cache Tĩnh & Nhận diện Real IP Cloudflare:**
+9. **Tối ưu Cache Tĩnh & Nhận diện Real IP Cloudflare:**
    * Cấu hình OpenLiteSpeed `expiresByType` lưu đệm CSS, JS, WebP/ảnh tĩnh 30 ngày và Web Font 1 năm, loại bỏ hoàn toàn hiện tượng `EXPIRED` trên Cloudflare edge và giải phóng CPU máy chủ VPS.
    * Chặn đứng mã HTTP 403 các cuộc tấn công brute-force bot vào `xmlrpc.php` và các file nhạy cảm (`.env`, `.git`, `readme.html`).
    * Tích hợp dải IP tin cậy của Cloudflare vào Traefik và kích hoạt `useIpInProxyHeader` trên OpenLiteSpeed để bảo toàn 100% Real IP của độc giả trong access log và plugins bảo mật.
@@ -301,6 +332,8 @@ Hệ thống được thiết kế theo mô hình **Multi-Tenant Isolation** đ�
 /opt/ols/
 ├── bin/
 │   └── ols                           # Binary CLI
+├── cache/
+│   └── wordpress.tar.gz              # Cache bộ cài WordPress core (tái sử dụng 7 ngày)
 ├── config/
 │   └── ols.yaml                      # Cấu hình hệ thống & mật khẩu root MariaDB
 ├── core/
@@ -309,12 +342,13 @@ Hệ thống được thiết kế theo mô hình **Multi-Tenant Isolation** đ�
 │   └── mariadb/                      # Dữ liệu MariaDB
 ├── sites/
 │   └── example.com/
+│       ├── .env                      # Cấu hình môi trường & REDIS_DB_ID cố định
 │       ├── docker-compose.yml        # Container OpenLiteSpeed độc lập
 │       ├── ols/conf/vhost.conf       # Cấu hình Virtual Host & WordPress Rewrite Rules
 │       ├── logs/                     # Access log và Error log riêng của site
 │       └── html/                     # Document root WordPress (chown nobody 65534:65534)
 └── backups/
-    └── example.com/                  # Các bản sao lưu nén tar.gz (mã nguồn + database)
+    └── example.com/                  # Các bản sao lưu nén tar.gz (mã nguồn + database, tự động bỏ qua logs)
 ```
 
 ---

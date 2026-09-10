@@ -37,6 +37,21 @@ func TestParseDfOutput(t *testing.T) {
 	}
 }
 
+func TestParseDfOutput_WrappedLines(t *testing.T) {
+	// Kiểm tra trường hợp tên filesystem LVM dài bị ngắt dòng trong df truyền thống
+	raw := `Filesystem           1M-blocks      Used Available Use% Mounted on
+/dev/mapper/ubuntu--vg-ubuntu--lv
+                         40960     10240     30720  25% /
+`
+	disk := ParseDfOutput(raw)
+	if disk.TotalGB != 40.0 {
+		t.Errorf("expected total 40GB, got %f", disk.TotalGB)
+	}
+	if disk.AvailableGB != 30.0 {
+		t.Errorf("expected available 30GB, got %f", disk.AvailableGB)
+	}
+}
+
 func TestParseDockerStats(t *testing.T) {
 	raw := `ols-mariadb	180MiB / 1.95GiB
 ols-redis	35MiB / 1.95GiB

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ols-cli/ols/internal/config"
 	"github.com/ols-cli/ols/internal/shield"
@@ -111,6 +112,9 @@ require_once ABSPATH . 'wp-settings.php';
 	}
 	if !strings.Contains(sanitized, "define( 'FS_METHOD', 'direct' )") {
 		t.Errorf("expected FS_METHOD direct, got:\n%s", sanitized)
+	}
+	if !strings.Contains(sanitized, "define( 'DISABLE_WP_CRON', true )") {
+		t.Errorf("expected DISABLE_WP_CRON true, got:\n%s", sanitized)
 	}
 	if !strings.Contains(sanitized, "define( 'LITESPEED_CONF__CACHE__OBJECT_DB_ID', 3 )") {
 		t.Errorf("expected Redis DB ID 3, got:\n%s", sanitized)
@@ -332,6 +336,66 @@ define('DB_HOST', 'ols-mariadb');
 	}
 	if info.DBHost != "ols-mariadb" {
 		t.Errorf("expected DBHost ols-mariadb, got %s", info.DBHost)
+	}
+}
+
+func TestGetSiteRedisDB_Persistence(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.Config{SystemDir: tmpDir}
+	mgr := NewManager(cfg)
+
+	// Create site beta.com
+	betaDir := filepath.Join(tmpDir, "sites", "beta.com")
+	_ = os.MkdirAll(betaDir, 0755)
+	_ = os.WriteFile(filepath.Join(betaDir, "docker-compose.yml"), []byte("services:\n  ols:\n    image: litespeedtech/openlitespeed:1.8.2-lsphp82\n"), 0644)
+
+	dbBeta := mgr.GetSiteRedisDB("beta.com")
+
+	// Create site alpha.com which comes before beta.com alphabetically
+	alphaDir := filepath.Join(tmpDir, "sites", "alpha.com")
+	_ = os.MkdirAll(alphaDir, 0755)
+	_ = os.WriteFile(filepath.Join(alphaDir, "docker-compose.yml"), []byte("services:\n  ols:\n    image: litespeedtech/openlitespeed:1.8.2-lsphp82\n"), 0644)
+
+	dbAlpha := mgr.GetSiteRedisDB("alpha.com")
+
+	// beta.com's DB ID must NOT change when alpha.com is added
+	dbBetaAfter := mgr.GetSiteRedisDB("beta.com")
+	if dbBeta != dbBetaAfter {
+		t.Errorf("expected beta.com Redis DB to remain %d, got %d", dbBeta, dbBetaAfter)
+	}
+
+	if dbBeta == dbAlpha {
+		t.Errorf("expected different Redis DB IDs for different sites, got both %d", dbBeta)
+	}
+}
+
+func TestIsWordPressCacheValid(t *testing.T) {
+	tmpDir := t.TempDir()
+	cacheFile := filepath.Join(tmpDir, "wordpress.tar.gz")
+
+	// 1. File chưa tồn tại -> false
+	if isWordPressCacheValid(cacheFile, 7*24*time.Hour) {
+		t.Errorf("expected non-existent file to be invalid cache")
+	}
+
+	// 2. File quá nhỏ (< 1MB) -> false
+	_ = os.WriteFile(cacheFile, []byte("too small"), 0644)
+	if isWordPressCacheValid(cacheFile, 7*24*time.Hour) {
+		t.Errorf("expected small file (<1MB) to be invalid cache")
+	}
+
+	// 3. File đủ lớn (>= 1MB) -> true
+	dummyData := make([]byte, 1024*1024+10)
+	_ = os.WriteFile(cacheFile, dummyData, 0644)
+	if !isWordPressCacheValid(cacheFile, 7*24*time.Hour) {
+		t.Errorf("expected freshly created 1MB+ file to be valid cache")
+	}
+
+	// 4. File quá hạn (> maxAge)
+	oldTime := time.Now().Add(-8 * 24 * time.Hour)
+	_ = os.Chtimes(cacheFile, oldTime, oldTime)
+	if isWordPressCacheValid(cacheFile, 7*24*time.Hour) {
+		t.Errorf("expected expired file (8 days old) to be invalid cache")
 	}
 }
 

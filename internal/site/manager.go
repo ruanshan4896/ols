@@ -2,10 +2,12 @@ package site
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -148,7 +150,7 @@ func (m *Manager) CreateSite(opts CreateSiteOptions) (err error) {
 	// 5. Tải WordPress core và cấu hình wp-config.php đồng bộ
 	if opts.InstallWP {
 		// Tải và giải nén WordPress core trực tiếp
-		if err = downloadWordPress(htmlDir); err != nil {
+		if err = m.downloadWordPress(htmlDir); err != nil {
 			return fmt.Errorf("tải bộ cài WordPress thất bại: %w", err)
 		}
 
@@ -177,6 +179,9 @@ define( 'WP_DEBUG', false );
 
 // Khắc phục triệt để lỗi hỏi FTP khi cài/cập nhật plugin & theme
 define( 'FS_METHOD', 'direct' );
+
+// Vô hiệu hóa WP-Cron tự động gọi loopback khi có visitor/bot truy cập web để tiết kiệm RAM & CPU
+define( 'DISABLE_WP_CRON', true );
 
 // Tự động cấu hình & cách ly tuyệt đối Redis Object Cache cho LiteSpeed Cache
 define( 'LITESPEED_CONF', true );
@@ -306,14 +311,63 @@ echo "OK";
 	return nil
 }
 
-func downloadWordPress(targetDir string) error {
-	cmd := exec.Command("curl", "-sSL", "https://wordpress.org/latest.tar.gz", "-o", "/tmp/wordpress.tar.gz")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("curl wordpress.tar.gz: %w", err)
+// isWordPressCacheValid kiểm tra file cache tải về có tồn tại, đủ kích thước và còn trong hạn không
+func isWordPressCacheValid(cacheFile string, maxAge time.Duration) bool {
+	stat, err := os.Stat(cacheFile)
+	if err != nil {
+		return false
 	}
-	defer os.Remove("/tmp/wordpress.tar.gz")
+	if stat.Size() < 1024*1024 { // Tối thiểu 1MB để chắc chắn là file tar.gz hợp lệ
+		return false
+	}
+	if time.Since(stat.ModTime()) > maxAge {
+		return false
+	}
+	return true
+}
 
-	tarCmd := exec.Command("tar", "-xzf", "/tmp/wordpress.tar.gz", "--strip-components=1", "-C", targetDir)
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	return err
+}
+
+func (m *Manager) downloadWordPress(targetDir string) error {
+	cacheDir := filepath.Join(m.cfg.SystemDir, "cache")
+	_ = os.MkdirAll(cacheDir, 0755)
+	cacheFile := filepath.Join(cacheDir, "wordpress.tar.gz")
+
+	archivePath := cacheFile
+	if !isWordPressCacheValid(cacheFile, 7*24*time.Hour) {
+		// Tải về file tạm độc nhất theo PID và Nano để chống race condition khi tạo nhiều site đồng thời
+		tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("wp_download_%d_%d.tar.gz", os.Getpid(), time.Now().UnixNano()))
+		defer os.Remove(tmpFile)
+
+		cmd := exec.Command("curl", "-sSL", "https://wordpress.org/latest.tar.gz", "-o", tmpFile)
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("curl wordpress.tar.gz: %w", err)
+		}
+
+		// Lưu vào cache nếu thành công để các lần tạo site sau tái sử dụng tức thì
+		if err := copyFile(tmpFile, cacheFile); err == nil {
+			archivePath = cacheFile
+		} else {
+			archivePath = tmpFile
+		}
+	}
+
+	tarCmd := exec.Command("tar", "-xzf", archivePath, "--strip-components=1", "-C", targetDir)
 	if err := tarCmd.Run(); err != nil {
 		return fmt.Errorf("tar extract wordpress: %w", err)
 	}
@@ -532,8 +586,8 @@ func (m *Manager) SyncSite(domain string) error {
 	fixURLSQL := fmt.Sprintf("UPDATE `wp_%s`.`wp_options` SET `option_value` = 'https://%s' WHERE `option_name` IN ('siteurl', 'home') AND `option_value` LIKE '%%/usr/local/lsws%%';", slug, domain)
 	_ = dbClient.ExecSQL(fixURLSQL)
 
-	// 9. Tự động xóa sạch toàn bộ cache cũ đang bị lẫn lộn trên Redis
-	_, _ = m.dm.ExecInContainer("ols-redis", "redis-cli", "FLUSHALL")
+	// 9. Tự động xóa sạch cache của website hiện tại trên Redis Database tương ứng
+	_, _ = m.dm.ExecInContainer("ols-redis", "redis-cli", "-n", strconv.Itoa(redisDB), "FLUSHDB")
 
 	// 10. Khởi tạo lại container nếu compose đổi, và khởi động lại OpenLiteSpeed để chắc chắn nạp vhost.conf mới
 	_ = m.dm.ComposeUp(siteDir)
@@ -562,6 +616,11 @@ func SanitizeWPConfig(configStr string, slug string, redisDB int) string {
 	// Khắc phục triệt để lỗi hỏi FTP khi cài/cập nhật plugin & theme
 	if !strings.Contains(configStr, "FS_METHOD") {
 		directives = append(directives, "// Khắc phục triệt để lỗi hỏi FTP khi cài/cập nhật plugin & theme\ndefine( 'FS_METHOD', 'direct' );")
+	}
+
+	// Vô hiệu hóa WP-Cron tự động gọi loopback khi có visitor/bot truy cập web để tiết kiệm RAM & CPU
+	if !strings.Contains(configStr, "DISABLE_WP_CRON") {
+		directives = append(directives, "// Vô hiệu hóa WP-Cron tự động gọi loopback khi có visitor/bot truy cập web (tiết kiệm RAM & CPU)\ndefine( 'DISABLE_WP_CRON', true );")
 	}
 
 	// Tự động cấu hình & cách ly tuyệt đối Redis Object Cache
@@ -703,16 +762,86 @@ func (m *Manager) SyncAllSites() ([]string, []error) {
 }
 
 func (m *Manager) GetSiteRedisDB(domain string) int {
-	sites, err := m.ListSites()
-	if err != nil || len(sites) == 0 {
-		return 0
-	}
-	for i, s := range sites {
-		if s.Domain == domain {
-			return i % 256
+	siteDir := filepath.Join(m.cfg.SystemDir, "sites", domain)
+	envFile := filepath.Join(siteDir, ".env")
+
+	// 1. Kiểm tra nếu trong .env đã lưu REDIS_DB_ID
+	if data, err := os.ReadFile(envFile); err == nil {
+		re := regexp.MustCompile(`(?m)^REDIS_DB_ID\s*=\s*([0-9]+)`)
+		if match := re.FindStringSubmatch(string(data)); len(match) > 1 {
+			if id, errConv := strconv.Atoi(match[1]); errConv == nil && id >= 0 && id < 256 {
+				return id
+			}
 		}
 	}
-	return len(sites) % 256
+
+	// 2. Kiểm tra trong wp-config.php nếu đã có cấu hình database ID
+	wpConfigPath := filepath.Join(siteDir, "html", "wp-config.php")
+	if data, err := os.ReadFile(wpConfigPath); err == nil {
+		re := regexp.MustCompile(`define\(\s*['"](?:WP_REDIS_DATABASE|LITESPEED_CONF__CACHE__OBJECT_DB_ID)['"]\s*,\s*([0-9]+)\s*\)`)
+		if match := re.FindStringSubmatch(string(data)); len(match) > 1 {
+			if id, errConv := strconv.Atoi(match[1]); errConv == nil && id >= 0 && id < 256 {
+				m.saveRedisDBToEnv(siteDir, id)
+				return id
+			}
+		}
+	}
+
+	// 3. Nếu chưa có, quét tất cả site hiện có để tìm các ID đã sử dụng
+	used := make(map[int]bool)
+	sites, _ := m.ListSites()
+	for _, s := range sites {
+		if s.Domain == domain {
+			continue
+		}
+		otherSiteDir := filepath.Join(m.cfg.SystemDir, "sites", s.Domain)
+		if data, err := os.ReadFile(filepath.Join(otherSiteDir, ".env")); err == nil {
+			re := regexp.MustCompile(`(?m)^REDIS_DB_ID\s*=\s*([0-9]+)`)
+			if match := re.FindStringSubmatch(string(data)); len(match) > 1 {
+				if id, errConv := strconv.Atoi(match[1]); errConv == nil {
+					used[id] = true
+				}
+			}
+		}
+		if data, err := os.ReadFile(filepath.Join(otherSiteDir, "html", "wp-config.php")); err == nil {
+			re := regexp.MustCompile(`define\(\s*['"](?:WP_REDIS_DATABASE|LITESPEED_CONF__CACHE__OBJECT_DB_ID)['"]\s*,\s*([0-9]+)\s*\)`)
+			if match := re.FindStringSubmatch(string(data)); len(match) > 1 {
+				if id, errConv := strconv.Atoi(match[1]); errConv == nil {
+					used[id] = true
+				}
+			}
+		}
+	}
+
+	// 4. Tìm ID nhỏ nhất chưa được sử dụng (0 - 255)
+	assigned := 0
+	for i := 0; i < 256; i++ {
+		if !used[i] {
+			assigned = i
+			break
+		}
+	}
+
+	m.saveRedisDBToEnv(siteDir, assigned)
+	return assigned
+}
+
+func (m *Manager) saveRedisDBToEnv(siteDir string, dbID int) {
+	_ = os.MkdirAll(siteDir, 0755)
+	envFile := filepath.Join(siteDir, ".env")
+	entry := fmt.Sprintf("REDIS_DB_ID=%d\n", dbID)
+	if data, err := os.ReadFile(envFile); err == nil {
+		str := string(data)
+		re := regexp.MustCompile(`(?m)^REDIS_DB_ID\s*=.*$`)
+		if re.MatchString(str) {
+			str = re.ReplaceAllString(str, fmt.Sprintf("REDIS_DB_ID=%d", dbID))
+		} else {
+			str = strings.TrimRight(str, "\n") + "\n" + entry
+		}
+		_ = os.WriteFile(envFile, []byte(str), 0644)
+	} else {
+		_ = os.WriteFile(envFile, []byte(entry), 0644)
+	}
 }
 
 func ParseDomainList(content string) []string {

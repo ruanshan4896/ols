@@ -155,3 +155,29 @@ func TestRenderTraefikConfig(t *testing.T) {
 		t.Errorf("expected cloudflare ip range in traefik config, got: %s", out)
 	}
 }
+
+func TestShouldIncludeWWW(t *testing.T) {
+	tests := []struct {
+		domain   string
+		expected bool
+	}{
+		{"example.com", true},
+		{"myblog.vn", true},
+		{"congty.com.vn", true},
+		{"shop.net.vn", true},
+		{"domain.co.uk", true},
+		{"service.org.au", true},
+		{"blog.example.com", false},
+		{"dev.site.vn", false},
+		{"sub.domain.com.vn", false},
+		{"www.example.com", false},
+	}
+
+	for _, tt := range tests {
+		actual := ShouldIncludeWWW(tt.domain)
+		if actual != tt.expected {
+			t.Errorf("ShouldIncludeWWW(%q) = %v; want %v", tt.domain, actual, tt.expected)
+		}
+	}
+}
+

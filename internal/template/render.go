@@ -42,9 +42,49 @@ func RenderTraefikConfig(email string) (string, error) {
 	return renderFile("core/traefik.yml.tmpl", map[string]string{"Email": email})
 }
 
+// ShouldIncludeWWW xác định xem tên miền có nên được gắn thêm tiền tố www hay không.
+// Tự động nhận diện chính xác cả tên miền gốc chuẩn quốc tế và tên miền hai đuôi quốc gia (ccTLD: .com.vn, .co.uk, v.v.)
+func ShouldIncludeWWW(domain string) bool {
+	domain = strings.ToLower(strings.TrimSpace(domain))
+	if strings.HasPrefix(domain, "www.") {
+		return false
+	}
+
+	parts := strings.Split(domain, ".")
+	if len(parts) < 2 {
+		return false
+	}
+
+	// Trường hợp 1: Tên miền 2 phần (example.com, myblog.vn) -> luôn có www
+	if len(parts) == 2 {
+		return true
+	}
+
+	// Trường hợp 2: Tên miền 3 phần (example.com.vn, domain.co.uk)
+	// Kiểm tra nếu đuôi cuối là mã quốc gia 2 ký tự (vn, uk, jp, au...) và phần giữa là SLD phổ biến
+	if len(parts) == 3 {
+		tld := parts[2]
+		sld := parts[1]
+		if len(tld) == 2 {
+			commonSLDs := map[string]bool{
+				"com": true, "net": true, "org": true, "edu": true,
+				"gov": true, "biz": true, "info": true, "co": true,
+				"me": true, "or": true, "ne": true, "ac": true,
+				"pro": true, "name": true,
+			}
+			if commonSLDs[sld] {
+				return true
+			}
+		}
+	}
+
+	// Các trường hợp khác (subdomain như sub.example.com, dev.domain.com.vn) -> không có www
+	return false
+}
+
 func RenderSiteCompose(data SiteTemplateData) (string, error) {
 	data.PHPVersionShort = strings.ReplaceAll(data.PHPVersion, ".", "")
-	data.IncludeWWW = strings.Count(data.Domain, ".") == 1
+	data.IncludeWWW = ShouldIncludeWWW(data.Domain)
 	return renderFile("site/docker-compose.yml.tmpl", data)
 }
 

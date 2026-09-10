@@ -89,12 +89,14 @@ func ParseFreeOutput(output string) (MemInfo, SwapInfo) {
 	return mem, swap
 }
 
-// ParseDfOutput phân tích cú pháp kết quả từ lệnh 'df -m'
+// ParseDfOutput phân tích cú pháp kết quả từ lệnh 'df -m' hoặc 'df -P -m'
 func ParseDfOutput(output string) DiskInfo {
 	var disk DiskInfo
 	lines := strings.Split(output, "\n")
 	if len(lines) > 1 {
-		fields := strings.Fields(lines[1])
+		// Nối toàn bộ nội dung sau dòng tiêu đề lại để phòng trường hợp tên LVM dài bị ngắt dòng
+		dataContent := strings.Join(lines[1:], " ")
+		fields := strings.Fields(dataContent)
 		if len(fields) >= 4 {
 			totalMB, _ := strconv.ParseFloat(fields[1], 64)
 			usedMB, _ := strconv.ParseFloat(fields[2], 64)
@@ -369,12 +371,12 @@ func GetVPSCapacity(systemDir string) (*CapacityReport, error) {
 	}
 	mem, swap := ParseFreeOutput(string(freeOut))
 
-	// 3. Đọc dung lượng ổ cứng qua 'df -m'
+	// 3. Đọc dung lượng ổ cứng qua 'df -P -m' (định dạng chuẩn POSIX không ngắt dòng)
 	targetPath := systemDir
 	if targetPath == "" {
 		targetPath = "/"
 	}
-	dfOut, _ := exec.Command("df", "-m", targetPath).CombinedOutput()
+	dfOut, _ := exec.Command("df", "-P", "-m", targetPath).CombinedOutput()
 	disk := ParseDfOutput(string(dfOut))
 
 	// 4. Đọc số liệu RAM các container website qua 'docker stats'

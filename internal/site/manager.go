@@ -658,6 +658,11 @@ define( 'WP_CACHE', true );`, redisDB, slug, redisDB, slug, slug))
 		}
 	}
 
+	// Tự động chuẩn hóa và sửa chữa khối ABSPATH nếu bị lỗi cú pháp (thiếu { hoặc thừa } mồ côi)
+	reNormalizeABSPATH := regexp.MustCompile(`(?s)if\s*\(\s*!\s*defined\s*\(\s*['"]ABSPATH['"]\s*\)\s*\)[^;]*;?\s*define\s*\(\s*['"]ABSPATH['"][^;]*;?\s*(?:\}\s*)+`)
+	canonicalABSPATH := "if ( ! defined( 'ABSPATH' ) ) {\n\tdefine( 'ABSPATH', __DIR__ . '/' );\n}\n"
+	configStr = reNormalizeABSPATH.ReplaceAllLiteralString(configStr, canonicalABSPATH)
+
 	return configStr
 }
 

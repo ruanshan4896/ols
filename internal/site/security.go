@@ -57,16 +57,23 @@ func ReplaceSaltsInWPConfig(content, newSalts string) string {
 	reSalts := regexp.MustCompile(`(?s)(//\s*Authentication Unique Keys and Salts[^\n]*\n\s*)?(define\s*\(\s*['"]AUTH_KEY['"].*?define\s*\(\s*['"]NONCE_SALT['"][^\n]*\n?)`)
 
 	if reSalts.MatchString(content) {
-		return reSalts.ReplaceAllLiteralString(content, replacement)
+		content = reSalts.ReplaceAllLiteralString(content, replacement)
+	} else {
+		// Nếu file cấu hình không có block chuẩn, chèn trước khối "if (!defined('ABSPATH'))"
+		reABSPATH := regexp.MustCompile(`(?i)if\s*\(\s*!\s*defined\s*\(\s*['"]ABSPATH['"]\s*\)\s*\)`)
+		if loc := reABSPATH.FindStringIndex(content); loc != nil {
+			content = content[:loc[0]] + replacement + "\n" + content[loc[0]:]
+		} else {
+			content = strings.TrimRight(content, "\r\n") + "\n\n" + replacement
+		}
 	}
 
-	// Nếu file cấu hình không có block chuẩn, chèn trước khối "if (!defined('ABSPATH'))"
-	reABSPATH := regexp.MustCompile(`(?i)if\s*\(\s*!\s*defined\s*\(\s*['"]ABSPATH['"]\s*\)\s*\)`)
-	if loc := reABSPATH.FindStringIndex(content); loc != nil {
-		return content[:loc[0]] + replacement + "\n" + content[loc[0]:]
-	}
+	// Tự động chuẩn hóa và sửa chữa khối ABSPATH nếu bị lỗi cú pháp (thiếu { hoặc thừa } mồ côi)
+	reNormalizeABSPATH := regexp.MustCompile(`(?s)if\s*\(\s*!\s*defined\s*\(\s*['"]ABSPATH['"]\s*\)\s*\)[^;]*;?\s*define\s*\(\s*['"]ABSPATH['"][^;]*;?\s*(?:\}\s*)+`)
+	canonicalABSPATH := "if ( ! defined( 'ABSPATH' ) ) {\n\tdefine( 'ABSPATH', __DIR__ . '/' );\n}\n"
+	content = reNormalizeABSPATH.ReplaceAllLiteralString(content, canonicalABSPATH)
 
-	return strings.TrimRight(content, "\r\n") + "\n\n" + replacement
+	return content
 }
 
 // RegenerateSalts làm mới 8 khóa bảo mật trong file wp-config.php của website

@@ -15,6 +15,7 @@ services:
     volumes:
       - ./html:/usr/local/lsws/Example/html
       - ./ols/conf/vhost.conf:/usr/local/lsws/conf/vhosts/Example/vhconf.conf
+      - ./logs:/usr/local/lsws/Example/logs
     networks:
       - {{ .NetworkName }}
 {{ if .BackendNetworkName }}      - {{ .BackendNetworkName }}

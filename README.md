@@ -218,23 +218,34 @@ Tự động đo đạc tài nguyên thực tế của VPS (RAM vật lý, Swap,
 ols capacity
 ```
 
-#### Xem nhật ký lỗi & Hỗ trợ Debug (`logs`)
-Dễ dàng tra cứu nhật ký và lọc nhanh các cảnh báo lỗi (ERROR/FATAL) của Traefik SSL, MariaDB Database, Redis Cache hoặc từng website mà không cần lục tìm file log phức tạp:
+#### Xem nhật ký & Chẩn đoán lỗi (`logs`)
+Dễ dàng tra cứu nhật ký truy cập (access log), nhật ký lỗi PHP (error log) và lọc nhanh các cảnh báo lỗi (ERROR/FATAL/PANIC) của Traefik SSL, MariaDB, Redis, phpMyAdmin hoặc từng website:
 ```bash
-# Quét nhanh tất cả các lỗi gần nhất trên toàn hệ thống
+# Quét toàn diện tất cả các lỗi nghiêm trọng trên toàn hệ thống (Traefik, DB, Redis & PHP Error mọi site)
 ols logs --scan
 
-# Xem 50 dòng log gần nhất của Traefik SSL & Gateway
+# Xem log các dịch vụ hạ tầng Core
 ols logs traefik
-
-# Xem log cơ sở dữ liệu MariaDB hoặc Redis
-ols logs mariadb
+ols logs mariadb -n 100
 ols logs redis
+ols logs pma
 
-# Xem lỗi PHP Fatal / 500 của một website cụ thể (tùy chọn -n số dòng)
-ols logs example.com -n 100
+# Xem Access Log (khách & bot truy cập) của website
+ols logs example.com --access
 
-# Xóa sạch toàn bộ log cũ của các container và website, reset về 0 byte
+# Xem Error Log (lỗi PHP Fatal / 500) của website
+ols logs example.com --error
+
+# Phân tích Top 15 địa chỉ IP gửi nhiều request nhất (bắt botnet/tấn công)
+ols logs example.com --top-ip
+
+# Phân tích Top 15 đường dẫn URL bị gọi nhiều nhất
+ols logs example.com --top-url
+
+# Theo dõi nhật ký theo thời gian thực (Live streaming / tail -f)
+ols logs example.com -f
+
+# Xóa sạch toàn bộ log cũ của các container và website, giải phóng dung lượng ổ cứng
 ols logs --clear
 ```
 

@@ -239,9 +239,11 @@ RewriteRule . /index.php [L]
 		_ = os.WriteFile(htaccessPath, []byte(defaultHtaccess), 0664)
 	}
 
-	// Phân quyền cho user nobody (UID 65534) của OpenLiteSpeed và cấp toàn quyền ghi cho WordPress
+	// Phân quyền cho user nobody (UID 65534) của OpenLiteSpeed và cấp toàn quyền ghi cho WordPress & Logs
 	_ = exec.Command("chown", "-R", "65534:65534", htmlDir).Run()
 	_ = exec.Command("chmod", "-R", "775", htmlDir).Run()
+	_ = exec.Command("chown", "-R", "65534:65534", logsDir).Run()
+	_ = exec.Command("chmod", "-R", "775", logsDir).Run()
 	wpContentDir := filepath.Join(htmlDir, "wp-content")
 	_ = os.MkdirAll(filepath.Join(wpContentDir, "upgrade"), 0777)
 	_ = os.MkdirAll(filepath.Join(wpContentDir, "uploads"), 0777)
@@ -564,9 +566,13 @@ func (m *Manager) SyncSite(domain string) error {
 	CleanConflictingCacheDropins(wpContentDir)
 	_ = DeployMUPlugins(htmlDir)
 
-	// 6. Đồng bộ phân quyền user nobody (UID 65534)
+	// 6. Đồng bộ phân quyền user nobody (UID 65534) cho cả html và logs
 	_ = exec.Command("chown", "-R", "65534:65534", htmlDir).Run()
 	_ = exec.Command("chmod", "-R", "775", htmlDir).Run()
+	logsDir := filepath.Join(siteDir, "logs")
+	_ = os.MkdirAll(logsDir, 0755)
+	_ = exec.Command("chown", "-R", "65534:65534", logsDir).Run()
+	_ = exec.Command("chmod", "-R", "775", logsDir).Run()
 	_ = os.MkdirAll(filepath.Join(wpContentDir, "upgrade"), 0777)
 	_ = os.MkdirAll(filepath.Join(wpContentDir, "uploads"), 0777)
 	_ = os.MkdirAll(filepath.Join(wpContentDir, "plugins"), 0777)

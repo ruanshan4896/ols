@@ -688,40 +688,86 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 		pauseForEnter(reader)
 
 	case "14":
-		color.Cyan("\n--- [14] Xem nhật ký lỗi & Hỗ trợ Debug ---")
-		color.New(color.FgWhite, color.Bold).Println("Chọn dịch vụ hoặc thành phần cần kiểm tra lỗi:")
-		printOption("[1]", "Traefik Reverse Proxy & SSL (Lỗi chứng chỉ SSL, 502 Bad Gateway)")
-		printOption("[2]", "MariaDB Database (Lỗi kết nối cơ sở dữ liệu, crash)")
-		printOption("[3]", "Redis Cache (Lỗi bộ nhớ đệm, connection refused)")
-		printOption("[4]", "Xem lỗi của một Website cụ thể (PHP Fatal, 500, lỗi plugin)")
-		printOption("[5]", "QUÉT NHANH TOÀN HỆ THỐNG (Tự động lọc các lỗi gần nhất)")
-		printOption("[6]", "XÓA TOÀN BỘ NHẬT KÝ CŨ (Reset log Docker & Web về 0 byte)")
+		color.Cyan("\n--- [14] Trung tâm Nhật ký & Chẩn đoán Lỗi (Logs & Debug) ---")
+		color.New(color.FgHiGreen, color.Bold).Println("  [ DỊCH VỤ HẠ TẦNG CỐT LÕI ]")
+		printOption("[1]", "Traefik Gateway & SSL (Chứng chỉ SSL, Routing, 502 Bad Gateway)")
+		printOption("[2]", "MariaDB Database (Lỗi kết nối cơ sở dữ liệu, crash, query)")
+		printOption("[3]", "Redis Cache (Bộ nhớ đệm, LRU eviction, Connection)")
+		printOption("[4]", "phpMyAdmin (Hoạt động web quản trị database - khi đang bật)")
+		fmt.Println()
+		color.New(color.FgHiGreen, color.Bold).Println("  [ GIÁM SÁT WEBSITE WORDPRESS ]")
+		printOption("[5]", "Xem Access Log (Nhật ký khách & bot truy cập gần nhất)")
+		printOption("[6]", "Xem Error Log (Nhật ký lỗi PHP Fatal, 500, Plugin lỗi)")
+		printOption("[7]", "Phân tích Top IP & Top URL (Bắt botnet, cào bài, phát hiện tấn công)")
+		printOption("[8]", "Theo dõi Log thời gian thực (Live Stream - tail -f)")
+		fmt.Println()
+		color.New(color.FgHiGreen, color.Bold).Println("  [ CÔNG CỤ HỆ THỐNG ]")
+		printOption("[9]", "QUÉT TOÀN DIỆN LỖI HỆ THỐNG (Traefik, DB, Redis & PHP Error toàn bộ site)")
+		printOption("[10]", "DỌN SẠCH TOÀN BỘ LOG (Giải phóng dung lượng đĩa của Docker & các site)")
 		printOption("[0]", "Quay lại")
 		fmt.Println()
 
-		subChoice := readInput(reader, "Nhập lựa chọn của bạn [0-6]", "5")
+		subChoice := readInput(reader, "Nhập lựa chọn của bạn [0-10]", "9")
 		switch subChoice {
 		case "1":
-			_ = PrintContainerLog("ols-traefik", "Traefik SSL/Proxy", 60)
+			_ = PrintContainerLog("ols-traefik", "Traefik SSL/Proxy", 60, false)
 		case "2":
-			_ = PrintContainerLog("ols-mariadb", "MariaDB Database", 60)
+			_ = PrintContainerLog("ols-mariadb", "MariaDB Database", 60, false)
 		case "3":
-			_ = PrintContainerLog("ols-redis", "Redis Cache", 60)
+			_ = PrintContainerLog("ols-redis", "Redis Cache", 60, false)
 		case "4":
-			domain := readInput(reader, "Nhập tên miền website cần xem nhật ký", "")
+			_ = PrintContainerLog("ols-pma", "phpMyAdmin", 60, false)
+		case "5":
+			domain := readInput(reader, "Nhập tên miền website cần xem Access Log", "")
 			if domain != "" {
-				color.Cyan("-> Đang lấy nhật ký website %s...", domain)
-				out, err := system.GetSiteLogs(domain, 60)
+				color.Cyan("-> Đang lấy Access Log website %s...", domain)
+				out, err := system.GetSiteAccessLog("/opt/ols", domain, 60)
 				if err != nil {
 					color.Red("Lỗi: %v", err)
 				} else {
 					fmt.Println(out)
 				}
 			}
-		case "5":
-			_ = RunQuickErrorScan(50)
 		case "6":
-			confirm := readInput(reader, "Bạn có chắc chắn muốn xóa sạch toàn bộ log của tất cả container? (y/N)", "N")
+			domain := readInput(reader, "Nhập tên miền website cần xem Error Log", "")
+			if domain != "" {
+				color.Cyan("-> Đang lấy Error Log website %s...", domain)
+				out, err := system.GetSiteErrorLog("/opt/ols", domain, 60)
+				if err != nil {
+					color.Red("Lỗi: %v", err)
+				} else {
+					fmt.Println(out)
+				}
+			}
+		case "7":
+			domain := readInput(reader, "Nhập tên miền website cần phân tích", "")
+			if domain != "" {
+				color.Cyan("-> Đang phân tích nhật ký website %s...", domain)
+				ipStats, errIP := system.GetSiteTopIPs("/opt/ols", domain, 10)
+				if errIP == nil {
+					PrintTopIPReport(domain, ipStats)
+				}
+				urlStats, errURL := system.GetSiteTopURLs("/opt/ols", domain, 10)
+				if errURL == nil {
+					PrintTopURLReport(domain, urlStats)
+				}
+				if errIP != nil && errURL != nil {
+					color.Red("Lỗi phân tích: %v", errIP)
+				}
+			}
+		case "8":
+			domain := readInput(reader, "Nhập tên miền website cần theo dõi trực tiếp", "")
+			if domain != "" {
+				fmt.Println("Chọn loại log cần theo dõi:")
+				printOption("[1]", "Access Log (Lượt truy cập khách/bot)")
+				printOption("[2]", "Error Log (Lỗi PHP & Web Server)")
+				streamType := readInput(reader, "Lựa chọn [1-2]", "1")
+				_ = FollowSiteLog(domain, streamType == "1")
+			}
+		case "9":
+			_ = RunQuickErrorScan(50)
+		case "10":
+			confirm := readInput(reader, "Bạn có chắc chắn muốn xóa sạch toàn bộ log trên toàn hệ thống? (y/N)", "N")
 			if strings.ToLower(confirm) == "y" {
 				_ = RunClearAllLogs()
 			} else {

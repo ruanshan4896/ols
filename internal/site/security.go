@@ -47,6 +47,28 @@ func FetchWordPressSalts() (string, error) {
 	return strings.TrimSpace(sb.String()), nil
 }
 
+// ReplaceSaltsInWPConfig thay thế hoặc chèn khối 8 khóa bảo mật vào nội dung wp-config.php một cách an toàn tuyệt đối.
+// Sử dụng ReplaceAllLiteralString để đảm bảo các ký tự đặc biệt ($1, $2, $name, backslashes...) trong salt từ WordPress.org
+// không bao giờ bị hiểu nhầm thành regex expansion gây lỗi cú pháp PHP Unmatched '}'.
+func ReplaceSaltsInWPConfig(content, newSalts string) string {
+	replacement := "// Authentication Unique Keys and Salts (Regenerated via OLS CLI)\n" + strings.TrimSpace(newSalts) + "\n"
+
+	// Pattern tìm block 8 dòng define keys trong wp-config.php (hỗ trợ cả trường hợp đã từng regenerate hoặc có chú thích)
+	reSalts := regexp.MustCompile(`(?s)(//\s*Authentication Unique Keys and Salts[^\n]*\n\s*)?(define\s*\(\s*['"]AUTH_KEY['"].*?define\s*\(\s*['"]NONCE_SALT['"][^\n]*\n?)`)
+
+	if reSalts.MatchString(content) {
+		return reSalts.ReplaceAllLiteralString(content, replacement)
+	}
+
+	// Nếu file cấu hình không có block chuẩn, chèn trước khối "if (!defined('ABSPATH'))"
+	reABSPATH := regexp.MustCompile(`(?i)if\s*\(\s*!\s*defined\s*\(\s*['"]ABSPATH['"]\s*\)\s*\)`)
+	if loc := reABSPATH.FindStringIndex(content); loc != nil {
+		return content[:loc[0]] + replacement + "\n" + content[loc[0]:]
+	}
+
+	return strings.TrimRight(content, "\r\n") + "\n\n" + replacement
+}
+
 // RegenerateSalts làm mới 8 khóa bảo mật trong file wp-config.php của website
 func (m *Manager) RegenerateSalts(domain string) (bool, error) {
 	siteDir := filepath.Join(m.cfg.SystemDir, "sites", domain)
@@ -62,27 +84,9 @@ func (m *Manager) RegenerateSalts(domain string) (bool, error) {
 		return false, fmt.Errorf("không thể tạo salts mới: %w", err)
 	}
 
-	content := string(contentBytes)
+	updated := ReplaceSaltsInWPConfig(string(contentBytes), newSalts)
 
-	// Pattern tìm block 8 dòng define keys trong wp-config.php
-	// Hỗ trợ cả định dạng: define( 'AUTH_KEY' ... hoặc define('AUTH_KEY' ...
-	reSalts := regexp.MustCompile(`(?s)(//\s*Authentication Unique Keys and Salts\s*)?(define\s*\(\s*['"]AUTH_KEY['"].*?define\s*\(\s*['"]NONCE_SALT['"][^\n]*\n)`)
-
-	replacement := "// Authentication Unique Keys and Salts (Regenerated via OLS CLI)\n" + newSalts + "\n"
-
-	if reSalts.MatchString(content) {
-		content = reSalts.ReplaceAllString(content, replacement)
-	} else {
-		// Nếu file cấu hình không có block chuẩn, chèn trước "if ( ! defined( 'ABSPATH' ) )" hoặc cuối file
-		marker := "if ( ! defined( 'ABSPATH' ) )"
-		if strings.Contains(content, marker) {
-			content = strings.Replace(content, marker, replacement+"\n"+marker, 1)
-		} else {
-			content = content + "\n" + replacement
-		}
-	}
-
-	if err := os.WriteFile(wpConfigPath, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(wpConfigPath, []byte(updated), 0644); err != nil {
 		return false, fmt.Errorf("lỗi ghi wp-config.php: %w", err)
 	}
 
@@ -105,6 +109,7 @@ func (m *Manager) GetSitePHPBinary(domain string) string {
 
 // ResetAdminPassword đặt lại mật khẩu cho tài khoản quản trị WordPress.
 // Nếu username rỗng, hàm tự động phát hiện tài khoản Administrator đầu tiên trong database.
+// Hỗ trợ tìm kiếm theo cả user_login và email (nếu có ký tự @).
 func (m *Manager) ResetAdminPassword(domain string, username string, newPassword string) (string, error) {
 	slug := DomainToSlug(domain)
 	containerName := "ols_" + slug
@@ -121,10 +126,11 @@ func (m *Manager) ResetAdminPassword(domain string, username string, newPassword
 		newPassword = generated
 	}
 
-	// Escape password cho PHP string
+	// Escape password và username cho PHP string
 	escapedPass := strings.ReplaceAll(newPassword, "\\", "\\\\")
 	escapedPass = strings.ReplaceAll(escapedPass, "'", "\\'")
-	escapedUser := strings.ReplaceAll(username, "'", "\\'")
+	escapedUser := strings.ReplaceAll(username, "\\", "\\\\")
+	escapedUser = strings.ReplaceAll(escapedUser, "'", "\\'")
 
 	phpScript := fmt.Sprintf(`
 define('WP_USE_THEMES', false);
@@ -134,10 +140,16 @@ $target_user = '%s';
 $user = null;
 
 if (!empty($target_user)) {
+    // 1. Tìm theo username đăng nhập chính xác
     $user = get_user_by('login', $target_user);
+    // 2. Nếu không thấy và target_user có dạng email, tìm theo email
+    if (!$user && strpos($target_user, '@') !== false) {
+        $user = get_user_by('email', $target_user);
+    }
 }
 
-if (!$user) {
+// Nếu người dùng không chỉ định username cụ thể, tự động lấy tài khoản Administrator đầu tiên
+if (!$user && empty($target_user)) {
     $admins = get_users(array('role' => 'administrator', 'number' => 1));
     if (!empty($admins)) {
         $user = $admins[0];
@@ -147,6 +159,8 @@ if (!$user) {
 if ($user) {
     wp_set_password('%s', $user->ID);
     echo "SUCCESS:" . $user->user_login;
+} else if (!empty($target_user)) {
+    echo "ERROR: Không tìm thấy tài khoản quản trị viên nào với username hoặc email là '" . $target_user . "'";
 } else {
     echo "ERROR: Không tìm thấy tài khoản quản trị viên nào trong cơ sở dữ liệu";
 }

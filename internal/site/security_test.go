@@ -94,3 +94,69 @@ func TestGetSitePHPBinary(t *testing.T) {
 	}
 }
 
+func TestReplaceSaltsInWPConfig_DollarSignAndSpecialChars(t *testing.T) {
+	initial := `<?php
+define( 'DB_NAME', 'wp_test' );
+// Authentication Unique Keys and Salts
+define( 'AUTH_KEY',         'old1' );
+define( 'SECURE_AUTH_KEY',  'old2' );
+define( 'LOGGED_IN_KEY',    'old3' );
+define( 'NONCE_KEY',        'old4' );
+define( 'AUTH_SALT',        'old5' );
+define( 'SECURE_AUTH_SALT', 'old6' );
+define( 'LOGGED_IN_SALT',   'old7' );
+define( 'NONCE_SALT',       'old8' );
+
+if ( ! defined( 'ABSPATH' ) ) {
+	define( 'ABSPATH', __DIR__ . '/' );
+}
+`
+
+	// Salts containing $0, $1, $2, ${foo}, $`, etc. which would break ReplaceAllString
+	complexSalts := `define('AUTH_KEY',         'a$0b$1c$2d$name');
+define('SECURE_AUTH_KEY',  'test${foo}bar');
+define('LOGGED_IN_KEY',    'val$$double');
+define('NONCE_KEY',        'key$');
+define('AUTH_SALT',        'salt$7end');
+define('SECURE_AUTH_SALT', 'salt}curly');
+define('LOGGED_IN_SALT',   'salt{sk<#%');
+define('NONCE_SALT',       'final$1$2salt');`
+
+	result := ReplaceSaltsInWPConfig(initial, complexSalts)
+
+	// Verify all special sequences are preserved verbatim
+	expectedSubstrings := []string{
+		"a$0b$1c$2d$name",
+		"test${foo}bar",
+		"val$$double",
+		"salt$7end",
+		"salt}curly",
+		"salt{sk<#%",
+		"final$1$2salt",
+		"if ( ! defined( 'ABSPATH' ) ) {",
+	}
+
+	for _, exp := range expectedSubstrings {
+		if !strings.Contains(result, exp) {
+			t.Errorf("expected result to contain %q, but got:\n%s", exp, result)
+		}
+	}
+
+	// Verify old salts are completely removed
+	if strings.Contains(result, "old1") || strings.Contains(result, "old8") {
+		t.Errorf("old salts still present in result:\n%s", result)
+	}
+
+	// Test regenerating a second time (with previously generated comment)
+	secondSalts := `define('AUTH_KEY',         'second-round-key');
+define('NONCE_SALT',       'second-round-nonce');`
+	secondResult := ReplaceSaltsInWPConfig(result, secondSalts)
+
+	if !strings.Contains(secondResult, "second-round-key") {
+		t.Errorf("second regeneration failed to replace salts")
+	}
+	if strings.Contains(secondResult, "a$0b$1c$2d$name") {
+		t.Errorf("first round salts still present after second round")
+	}
+}
+

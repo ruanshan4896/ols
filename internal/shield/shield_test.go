@@ -3,6 +3,7 @@ package shield
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -58,5 +59,42 @@ func TestSaveAndGetShieldConfig(t *testing.T) {
 	}
 	if loaded.BlockXMLRPC != false || loaded.RateLimitLogin != false || loaded.BlockUploadsPHP != true {
 		t.Errorf("loaded config mismatch: %+v", loaded)
+	}
+}
+
+func TestApplyShieldToHtaccess(t *testing.T) {
+	initialHtaccess := `# BEGIN WordPress
+RewriteEngine On
+RewriteRule . /index.php [L]
+# END WordPress`
+
+	cfg := DefaultShieldConfig()
+	result := ApplyShieldToHtaccess(initialHtaccess, cfg)
+
+	if !strings.Contains(result, BlockShieldStartMarker) {
+		t.Errorf("expected BlockShieldStartMarker in result")
+	}
+	if !strings.Contains(result, `RewriteRule ^/?xmlrpc\.php$ - [F,L,NC]`) {
+		t.Errorf("expected xmlrpc blocking rule in htaccess")
+	}
+	if !strings.Contains(result, "# BEGIN WordPress") {
+		t.Errorf("expected WordPress block to be preserved")
+	}
+
+	// Disable XMLRPC
+	cfg.BlockXMLRPC = false
+	resultDisabledXMLRPC := ApplyShieldToHtaccess(result, cfg)
+	if strings.Contains(resultDisabledXMLRPC, `xmlrpc\.php`) {
+		t.Errorf("expected xmlrpc blocking rule to be removed when disabled")
+	}
+
+	// Disable all
+	disabledCfg := DisabledShieldConfig()
+	resultAllDisabled := ApplyShieldToHtaccess(result, disabledCfg)
+	if strings.Contains(resultAllDisabled, BlockShieldStartMarker) {
+		t.Errorf("expected BlockShieldStartMarker to be removed when all disabled")
+	}
+	if !strings.Contains(resultAllDisabled, "# BEGIN WordPress") {
+		t.Errorf("expected WordPress block to still be preserved")
 	}
 }

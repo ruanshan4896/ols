@@ -221,10 +221,10 @@ require_once ABSPATH . 'wp-settings.php';
 		}
 	}
 
-	// Đảm bảo file .htaccess tồn tại cho các đường dẫn tĩnh (permalinks) WordPress
+	// Đảm bảo file .htaccess tồn tại cho các đường dẫn tĩnh (permalinks) WordPress và kích hoạt OLS Shield
 	htaccessPath := filepath.Join(htmlDir, ".htaccess")
 	if _, err := os.Stat(htaccessPath); os.IsNotExist(err) {
-		defaultHtaccess := `# BEGIN WordPress
+		defaultHtaccess := shield.ApplyShieldToHtaccess(`# BEGIN WordPress
 <IfModule mod_rewrite.c>
 RewriteEngine On
 RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
@@ -235,7 +235,7 @@ RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule . /index.php [L]
 </IfModule>
 # END WordPress
-`
+`, shieldCfg)
 		_ = os.WriteFile(htaccessPath, []byte(defaultHtaccess), 0664)
 	}
 
@@ -548,7 +548,7 @@ func (m *Manager) SyncSite(domain string) error {
 		_ = os.WriteFile(composePath, []byte(composeContent), 0644)
 	}
 
-	// 4. Đồng bộ và chuẩn hóa file .htaccess
+	// 4. Đồng bộ và chuẩn hóa file .htaccess kết hợp quy tắc OLS Shield
 	htmlDir := filepath.Join(siteDir, "html")
 	htaccessPath := filepath.Join(htmlDir, ".htaccess")
 	var currentHtaccess string
@@ -556,6 +556,7 @@ func (m *Manager) SyncSite(domain string) error {
 		currentHtaccess = string(data)
 	}
 	sanitizedHtaccess := SanitizeHtaccess(currentHtaccess)
+	sanitizedHtaccess = shield.ApplyShieldToHtaccess(sanitizedHtaccess, shieldCfg)
 	_ = os.WriteFile(htaccessPath, []byte(sanitizedHtaccess), 0664)
 
 	// 5. Dọn dẹp các file cache drop-in cũ của bên thứ 3 gây xung đột & cập nhật mu-plugins
@@ -941,7 +942,18 @@ func (m *Manager) ApplyShield(domain string, cfg shield.SiteShieldConfig) error 
 		_ = os.WriteFile(composePath, []byte(composeContent), 0644)
 	}
 
-	// 5. Nạp lại cấu hình container và khởi động lại OLS
+	// 5. Cập nhật file .htaccess trực tiếp với các luật phòng thủ kép của OLS Shield
+	htmlDir := filepath.Join(siteDir, "html")
+	htaccessPath := filepath.Join(htmlDir, ".htaccess")
+	var currentHtaccess string
+	if data, err := os.ReadFile(htaccessPath); err == nil {
+		currentHtaccess = string(data)
+	}
+	sanitizedHtaccess := SanitizeHtaccess(currentHtaccess)
+	sanitizedHtaccess = shield.ApplyShieldToHtaccess(sanitizedHtaccess, cfg)
+	_ = os.WriteFile(htaccessPath, []byte(sanitizedHtaccess), 0664)
+
+	// 6. Nạp lại cấu hình container và khởi động lại OLS
 	_ = m.dm.ComposeUp(siteDir)
 	_ = m.dm.ComposeRestart(siteDir)
 

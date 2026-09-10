@@ -53,8 +53,10 @@ func FetchWordPressSalts() (string, error) {
 func ReplaceSaltsInWPConfig(content, newSalts string) string {
 	replacement := "// Authentication Unique Keys and Salts (Regenerated via OLS CLI)\n" + strings.TrimSpace(newSalts) + "\n"
 
-	// Pattern tìm block 8 dòng define keys trong wp-config.php (hỗ trợ cả trường hợp đã từng regenerate hoặc có chú thích)
-	reSalts := regexp.MustCompile(`(?s)(//\s*Authentication Unique Keys and Salts[^\n]*\n\s*)?(define\s*\(\s*['"]AUTH_KEY['"].*?define\s*\(\s*['"]NONCE_SALT['"][^\n]*\n?)`)
+	// Pattern tìm block các dòng define keys trong wp-config.php.
+	// Sử dụng greedy '.*define' để nếu file từng bị lỗi sinh ra duplicate salts hoặc rác mồ côi giữa các block,
+	// toàn bộ từ AUTH_KEY đầu tiên đến NONCE_SALT cuối cùng sẽ được làm sạch triệt để về đúng 8 key chuẩn.
+	reSalts := regexp.MustCompile(`(?s)(//\s*Authentication Unique Keys and Salts[^\n]*\n\s*)?(define\s*\(\s*['"]AUTH_KEY['"].*define\s*\(\s*['"]NONCE_SALT['"][^\n]*\n?)`)
 
 	if reSalts.MatchString(content) {
 		content = reSalts.ReplaceAllLiteralString(content, replacement)

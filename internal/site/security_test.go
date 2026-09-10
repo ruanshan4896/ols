@@ -160,3 +160,52 @@ define('NONCE_SALT',       'second-round-nonce');`
 	}
 }
 
+func TestReplaceSaltsInWPConfig_CorruptedOrphanLine(t *testing.T) {
+	// Exact scenario from user's hb88.dental with orphan line 48 and duplicate salts on lines 49-52
+	corrupted := "<?php\ndefine('DB_NAME', 'hb88');\n" +
+		"define('AUTH_KEY',         '{?3`_Hei)fL.};tU+9aS-wc}Ju1ys(g(<T|8cRa76$:`BX:B;#.7:XpJ3c(cF/KY');\n" +
+		"define('SECURE_AUTH_KEY',  '*LJP%E9gc.d`D_kU@&_Dcp<d=,|SWlV1E`fwG-ov87)AgBsg-cz:Lztvfo]W{:.D');\n" +
+		"define('LOGGED_IN_KEY',    'B[+4KBj<eY]};<M|rGJ0rm8/RJ[6*u#7jvyL$03 &GQT;[EekEau_DqN&#J/6S|!');\n" +
+		"define('NONCE_KEY',        'VZ!|~_V+[|yg#@*n^yj. 4iPx>??_6-s<dkD-~<bKtkxu>1m Z30~6D%3TY?|s$s');\n" +
+		"define('AUTH_SALT',        '^1`FYjA3G{5|>jY%|4/x?Ab:><S+=$X.;C/e;kk+IljDjtcHKswP$`iSM6$V;P;=');\n" +
+		"define('SECURE_AUTH_SALT', '4v?KPiwC+d;C6:PB5ncn:0>j?V08+*H<[>hXsisqtxk{+|W:-@e)L3ed&?qpGDsd');\n" +
+		"define('LOGGED_IN_SALT',   'A&}gMw;:|^-5%J`G[G6K$S|.!MfZy}Si0oZ=IF?t>/!M#>EC6@pSkyBrdF-0g]n5');\n" +
+		"define('NONCE_SALT',       '*,Mw90ydRo[-AVotTklSXd}.lXFMCxZS&^S!?jE^r]&7GJNgd$LFV{Kd4Zz+#j1!');\n" +
+		"}T-Pw}*<YJTdpO.UeRcx');\n" +
+		"define('AUTH_SALT',        'By]j>`jJ=PY.[/EhAxizX:|r uQj#[R16<=[eDoRFmb+IaZQ&zj@D<hcfu#');\n" +
+		"define('SECURE_AUTH_SALT', 'WHp+gqvhSi.)8S5FxA.o5zSB[BoAn!S-^`YOHN)9+tALmytQAaqgLN?GA#6BKqFD');\n" +
+		"define('LOGGED_IN_SALT',   'rOI0f%*bG@YUKU .6c[zNV_VwvtB`o#-)DF5|zQVT&J|60)MyO=>P<X@ee^.xJm&');\n" +
+		"define('NONCE_SALT',       '<rAqN[QeQF|Sw6d7Bq)aZ8yVM+7;-/[@+@u%d0Pa$(_@Bi]S+?of&>+5uv+9T@rz');\n\n" +
+		"$table_prefix = 'wp_';\n" +
+		"if ( ! defined( 'ABSPATH' ) ) {\n\tdefine( 'ABSPATH', __DIR__ . '/' );\n}\n"
+
+	cleanSalts := `define('AUTH_KEY',         'clean_k1');
+define('SECURE_AUTH_KEY',  'clean_k2');
+define('LOGGED_IN_KEY',    'clean_k3');
+define('NONCE_KEY',        'clean_k4');
+define('AUTH_SALT',        'clean_s1');
+define('SECURE_AUTH_SALT', 'clean_s2');
+define('LOGGED_IN_SALT',   'clean_s3');
+define('NONCE_SALT',       'clean_s4');`
+
+	result := ReplaceSaltsInWPConfig(corrupted, cleanSalts)
+
+	// Ensure orphan line and old duplicate salts are wiped clean
+	if strings.Contains(result, "}T-Pw}") {
+		t.Errorf("corrupted orphan line '}T-Pw}' was not cleaned up!")
+	}
+	if strings.Contains(result, "By]j>`jJ") || strings.Contains(result, "WHp+gqvh") {
+		t.Errorf("duplicate old salts were not cleaned up!")
+	}
+	if strings.Count(result, "NONCE_SALT") != 1 {
+		t.Errorf("expected exactly 1 NONCE_SALT, got %d", strings.Count(result, "NONCE_SALT"))
+	}
+	if !strings.Contains(result, "clean_s4") {
+		t.Errorf("expected clean salts in output")
+	}
+	if !strings.Contains(result, "$table_prefix = 'wp_';") {
+		t.Errorf("table prefix missing or corrupted")
+	}
+}
+
+

@@ -127,6 +127,7 @@ func PrintMenu(w io.Writer) {
 
 		{itemNumStyle.Render("[15]"), itemNameStyle.Render("Lá chắn bảo vệ OLS Shield"), shieldGroupStyle.Render("BẢO VỆ TOÀN DIỆN"), itemDescStyle.Render("Chống brute-force, khóa XML-RPC & Uploads")},
 		{itemNumStyle.Render("[16]"), itemNameStyle.Render("Quản lý Redirect 301 / 302"), redirGroupStyle.Render("ĐIỀU HƯỚNG TRAFFIC"), itemDescStyle.Render("Redirect domain 301, URL, test & xóa")},
+		{itemNumStyle.Render("[17]"), itemNameStyle.Render("Tối ưu hóa LiteSpeed Cache"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemDescStyle.Render("Sao chép & áp dụng Preset tối ưu cho 1 hoặc tất cả site")},
 
 		{itemNumStyle.Render("[0]"), itemNameStyle.Render("Thoát"), sysGroupStyle.Render("HỆ THỐNG"), itemDescStyle.Render("Đóng trình quản trị OLS-CLI")},
 	}
@@ -145,7 +146,7 @@ func RunInteractiveMenu(r io.Reader, w io.Writer) error {
 	for {
 		PrintMenu(w)
 
-		choice := readInput(reader, "Nhập lựa chọn của bạn [0-16]", "")
+		choice := readInput(reader, "Nhập lựa chọn của bạn [0-17]", "")
 		if choice == "" {
 			continue
 		}
@@ -806,8 +807,91 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 		RunInteractiveRedirectUI(reader, mgr, systemDir)
 		pauseForEnter(reader)
 
+	case "17":
+		if errCfg != nil {
+			color.Red("\nHệ thống chưa được khởi tạo! Vui lòng chọn [1] trước.")
+			pauseForEnter(reader)
+			return
+		}
+		mgr := site.NewManager(cfg)
+		RunInteractiveLSCacheUI(reader, mgr)
+		pauseForEnter(reader)
+
 	default:
-		color.Yellow("Lựa chọn không hợp lệ! Vui lòng chọn từ 0 đến 16.")
+		color.Yellow("Lựa chọn không hợp lệ! Vui lòng chọn từ 0 đến 17.")
 		pauseForEnter(reader)
 	}
 }
+
+// RunInteractiveLSCacheUI quản lý giao diện tương tác cho việc tối ưu hóa LiteSpeed Cache
+func RunInteractiveLSCacheUI(reader *bufio.Reader, mgr *site.Manager) {
+	color.Cyan("\n--- [17] Tối ưu hóa & Đồng bộ cấu hình LiteSpeed Cache ---")
+	printOption("[1]", "Lưu cấu hình từ 1 website mẫu thành khuôn mẫu chung (Export Preset)")
+	printOption("[2]", "Áp dụng cấu hình tối ưu cho 1 website cụ thể")
+	printOption("[3]", "Áp dụng cấu hình tối ưu cho TẤT CẢ website trên VPS (Batch Apply)")
+	printOption("[4]", "Xem thông tin cấu hình khuôn mẫu hiện tại")
+	fmt.Println()
+
+	action := readInput(reader, "Nhập lựa chọn của bạn [1-4]", "1")
+	switch action {
+	case "1":
+		domain := readInput(reader, "Nhập tên miền website mẫu đã cấu hình hoàn chỉnh", "")
+		if domain == "" {
+			color.Red("Tên miền không được để trống!")
+			return
+		}
+		color.Yellow("-> Đang trích xuất cấu hình LiteSpeed Cache từ website '%s'...", domain)
+		count, err := mgr.ExportLSCachePreset(domain)
+		if err != nil {
+			color.Red("Thất bại: %v", err)
+			return
+		}
+		color.Green("✓ Đã trích xuất thành công %d tham số cấu hình từ '%s'!", count, domain)
+		color.Green("✓ File khuôn mẫu đã được lưu tại: %s", mgr.GetPresetPath())
+		color.Cyan("  Từ nay, mọi website mới hoặc khi bạn áp dụng tối ưu sẽ tự động dùng khuôn mẫu chuẩn này.")
+
+	case "2":
+		domain := readInput(reader, "Nhập tên miền website cần áp dụng cấu hình tối ưu", "")
+		if domain == "" {
+			color.Red("Tên miền không được để trống!")
+			return
+		}
+		color.Yellow("-> Đang cài đặt & tối ưu hóa LiteSpeed Cache cho '%s'...", domain)
+		if err := mgr.ApplyLSCachePreset(domain); err != nil {
+			color.Red("Thất bại: %v", err)
+			return
+		}
+		color.Green("✓ Đã tối ưu hóa và kích hoạt LiteSpeed Cache cho website '%s' thành công!", domain)
+		color.Green("✓ Đã tự động Purge toàn bộ cache cũ để website chạy cấu hình mới ngay lập tức.")
+
+	case "3":
+		confirm := readInput(reader, "Bạn có chắc chắn muốn áp dụng cấu hình tối ưu cho TẤT CẢ website? (y/N)", "N")
+		if strings.ToLower(confirm) != "y" {
+			color.Cyan("Đã hủy thao tác.")
+			return
+		}
+		color.Yellow("-> Đang đồng bộ cấu hình tối ưu cho toàn bộ website trên VPS...")
+		successes, failures := mgr.ApplyLSCachePresetToAll()
+		fmt.Println()
+		for _, s := range successes {
+			color.Green("  ✓ %s: Tối ưu thành công", s)
+		}
+		for d, f := range failures {
+			color.Red("  ✗ %s: Thất bại (%v)", d, f)
+		}
+		fmt.Printf("\nTổng kết: %d website thành công, %d website thất bại.\n", len(successes), len(failures))
+
+	case "4":
+		info, err := mgr.GetPresetSummary()
+		if err != nil {
+			color.Red("Lỗi đọc cấu hình: %v", err)
+			return
+		}
+		color.Cyan("\n--- THÔNG TIN CẤU HÌNH KHUÔN MẪU HIỆN TẠI ---")
+		fmt.Println(info)
+
+	default:
+		color.Yellow("Lựa chọn không hợp lệ.")
+	}
+}
+

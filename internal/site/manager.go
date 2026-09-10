@@ -298,6 +298,9 @@ echo "OK";
 			phpBin := fmt.Sprintf("/usr/local/lsws/lsphp%s/bin/php", phpShort)
 			_, _ = m.dm.ExecInContainer("ols_"+slug, phpBin, "/usr/local/lsws/Example/html/.ols_install.php")
 			_ = os.Remove(scriptPath)
+
+			// Tự động cài đặt và tối ưu hóa LiteSpeed Cache theo khuôn mẫu
+			_ = m.ApplyLSCachePreset(opts.Domain)
 		}
 	}
 

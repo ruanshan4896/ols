@@ -66,26 +66,34 @@ func (m *Manager) ExportLSCachePreset(sourceDomain string) (int, error) {
 define('WP_USE_THEMES', false);
 require_once '/usr/local/lsws/Example/html/wp-load.php';
 
+$plugin_file = WP_PLUGIN_DIR . '/litespeed-cache/litespeed-cache.php';
+if (!defined('LSCWP_V') && file_exists($plugin_file)) {
+    require_once $plugin_file;
+}
+
 $conf = array();
 
 // 1. Dùng API chính thức của LiteSpeed nếu class đã nạp (dry_run = true để nhận mảng trả về)
-if (class_exists('LiteSpeed\Conf')) {
-    $loaded = LiteSpeed\Conf::cls()->load_options(null, true);
+if (class_exists('\LiteSpeed\Conf')) {
+    $loaded = \LiteSpeed\Conf::cls()->load_options(null, true);
     if (is_array($loaded) && !empty($loaded)) {
         foreach ($loaded as $k => $v) {
-            $conf['litespeed.' . $k] = $v;
+            $clean_k = str_replace('litespeed.', '', $k);
+            $conf[$clean_k] = $v;
+            $conf['litespeed.' . $clean_k] = $v;
         }
     }
 }
 
 // 2. Quét trực tiếp bảng wp_options (hỗ trợ mọi phiên bản v1, v2, v3, v4, v5, v6, v7)
-if (empty($conf)) {
-    global $wpdb;
-    $results = $wpdb->get_results("SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE 'litespeed.%' OR option_name = 'litespeed-cache-conf'");
-    if (!empty($results)) {
-        foreach ($results as $row) {
-            $conf[$row->option_name] = maybe_unserialize($row->option_value);
-        }
+global $wpdb;
+$results = $wpdb->get_results("SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE 'litespeed.%' OR option_name = 'litespeed-cache-conf'");
+if (!empty($results)) {
+    foreach ($results as $row) {
+        $val = maybe_unserialize($row->option_value);
+        $clean_k = str_replace('litespeed.', '', $row->option_name);
+        $conf[$clean_k] = $val;
+        $conf[$row->option_name] = $val;
     }
 }
 
@@ -300,6 +308,12 @@ if (!is_plugin_active('litespeed-cache/litespeed-cache.php')) {
     }
 }
 
+// Bắt buộc nạp file chính của LiteSpeed Cache để khởi tạo đầy đủ class
+$plugin_file = WP_PLUGIN_DIR . '/litespeed-cache/litespeed-cache.php';
+if (!defined('LSCWP_V') && file_exists($plugin_file)) {
+    require_once $plugin_file;
+}
+
 // 2. Cập nhật cấu hình
 $raw_json = base64_decode('%s');
 $new_conf = json_decode($raw_json, true);
@@ -309,22 +323,31 @@ if (!is_array($new_conf) || empty($new_conf)) {
     exit;
 }
 
+$matrix = array();
 foreach ($new_conf as $opt_name => $opt_val) {
-    if (strpos($opt_name, 'litespeed.') === 0 || $opt_name === 'litespeed-cache-conf') {
-        update_option($opt_name, $opt_val);
-    } else {
-        update_option('litespeed.' . $opt_name, $opt_val);
-    }
+    $clean_k = str_replace('litespeed.', '', $opt_name);
+    $matrix[$clean_k] = $opt_val;
+    // Ghi trực tiếp cả hai dạng key vào wp_options để tương thích tuyệt đối
+    update_option('litespeed.' . $clean_k, $opt_val);
+    update_option($clean_k, $opt_val);
 }
 
-// Nạp lại cấu hình nếu class tồn tại
-if (class_exists('LiteSpeed\Conf')) {
-    LiteSpeed\Conf::cls()->load_options();
+// Cực kỳ quan trọng: Ghi nhận version plugin để LiteSpeed không tự động reset về default khi vào wp-admin lần đầu
+$ver = defined('\LiteSpeed\Core::VER') ? \LiteSpeed\Core::VER : (defined('LSCWP_V') ? LSCWP_V : '7.9.1');
+update_option('litespeed._version', $ver);
+
+// Gọi hàm đồng bộ chính thức của LiteSpeed để sinh lại file cấu hình và .htaccess
+if (class_exists('\LiteSpeed\Conf')) {
+    try {
+        \LiteSpeed\Conf::cls()->update_confs($matrix);
+    } catch (\Exception $e) {}
 }
 
 // 3. Xóa sạch cache cũ để cache mới sinh ra theo cấu hình tối ưu
-if (class_exists('LiteSpeed\Purge')) {
-    LiteSpeed\Purge::purge_all();
+if (class_exists('\LiteSpeed\Purge')) {
+    try {
+        \LiteSpeed\Purge::purge_all();
+    } catch (\Exception $e) {}
 }
 
 echo "SUCCESS";
@@ -346,6 +369,9 @@ echo "SUCCESS";
 		}
 		return fmt.Errorf("phản hồi từ WordPress: %s", trimmed)
 	}
+
+	// Báo cho OpenLiteSpeed nạp lại cấu hình và rules cache ngay lập tức
+	_, _ = m.dm.ExecInContainer(containerName, "touch", "/tmp/lshttpd/restart.txt")
 
 	return nil
 }

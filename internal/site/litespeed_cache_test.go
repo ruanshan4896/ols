@@ -17,11 +17,15 @@ func TestGetDefaultLSCachePreset(t *testing.T) {
 
 	requiredKeys := []string{
 		"cache", "cache-mobile", "guest", "guest_optm",
-		"instant_click", "optm-browser_cache", "pur-stale",
+		"instant_click", "optm-browser_cache", "purge-stale",
 	}
 
 	for _, k := range requiredKeys {
-		if val, exists := preset[k]; !exists || val != 1 {
+		val, exists := preset["litespeed."+k]
+		if !exists {
+			val, exists = preset[k]
+		}
+		if !exists || val != 1 {
 			t.Errorf("default preset missing or inactive key %s", k)
 		}
 	}

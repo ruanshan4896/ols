@@ -34,23 +34,22 @@ func (m *Manager) HasLSCachePreset() bool {
 // Tập trung vào Tốc độ & An toàn tuyệt đối: Page Cache, Mobile Cache, Guest Mode, Instant Click, Browser Cache
 func GetDefaultLSCachePreset() map[string]interface{} {
 	return map[string]interface{}{
-		"cache":              1,
-		"cache-priv":         1,
-		"cache-commenter":    1,
-		"cache-rest":         1,
-		"cache-page_login":   1,
-		"cache-favicon":      1,
-		"cache-resources":    1,
-		"cache-mobile":       1,
-		"guest":              1,
-		"guest_optm":         1,
-		"instant_click":      1,
-		"optm-browser_cache": 1,
-		"pur-stale":          1,
-		"pur-post":           1,
-		"pur-pages":          1,
-		"pur-front":          1,
-		"pur-home":           1,
+		"litespeed.cache":              1,
+		"litespeed.cache-priv":         1,
+		"litespeed.cache-commenter":    1,
+		"litespeed.cache-rest":         1,
+		"litespeed.cache-page_login":   1,
+		"litespeed.cache-resources":    1,
+		"litespeed.cache-mobile":       1,
+		"litespeed.guest":              1,
+		"litespeed.guest_optm":         1,
+		"litespeed.instant_click":      1,
+		"litespeed.optm-browser_cache": 1,
+		"litespeed.purge-stale":        1,
+		"litespeed.purge-post_all":     1,
+		"litespeed.purge-post_f":       1,
+		"litespeed.purge-post_h":       1,
+		"litespeed.purge-post_p":       1,
 	}
 }
 
@@ -67,16 +66,31 @@ func (m *Manager) ExportLSCachePreset(sourceDomain string) (int, error) {
 define('WP_USE_THEMES', false);
 require_once '/usr/local/lsws/Example/html/wp-load.php';
 
-$conf = null;
+$conf = array();
+
+// 1. Dùng API chính thức của LiteSpeed nếu class đã nạp (dry_run = true để nhận mảng trả về)
 if (class_exists('LiteSpeed\Conf')) {
-    $conf = LiteSpeed\Conf::cls()->load_options();
-}
-if (empty($conf)) {
-    $conf = get_option('litespeed.conf');
+    $loaded = LiteSpeed\Conf::cls()->load_options(null, true);
+    if (is_array($loaded) && !empty($loaded)) {
+        foreach ($loaded as $k => $v) {
+            $conf['litespeed.' . $k] = $v;
+        }
+    }
 }
 
-if (empty($conf) || !is_array($conf)) {
-    echo "ERROR: Không tìm thấy cấu hình LiteSpeed Cache trên website này. Hãy đảm bảo plugin đã được kích hoạt và cấu hình.";
+// 2. Quét trực tiếp bảng wp_options (hỗ trợ mọi phiên bản v1, v2, v3, v4, v5, v6, v7)
+if (empty($conf)) {
+    global $wpdb;
+    $results = $wpdb->get_results("SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE 'litespeed.%' OR option_name = 'litespeed-cache-conf'");
+    if (!empty($results)) {
+        foreach ($results as $row) {
+            $conf[$row->option_name] = maybe_unserialize($row->option_value);
+        }
+    }
+}
+
+if (empty($conf)) {
+    echo "ERROR: Không tìm thấy cấu hình LiteSpeed Cache trong database của website này. Hãy đảm bảo plugin đã được cài đặt và lưu cấu hình ít nhất 1 lần trong wp-admin.";
     exit;
 }
 
@@ -295,7 +309,13 @@ if (!is_array($new_conf) || empty($new_conf)) {
     exit;
 }
 
-update_option('litespeed.conf', $new_conf);
+foreach ($new_conf as $opt_name => $opt_val) {
+    if (strpos($opt_name, 'litespeed.') === 0 || $opt_name === 'litespeed-cache-conf') {
+        update_option($opt_name, $opt_val);
+    } else {
+        update_option('litespeed.' . $opt_name, $opt_val);
+    }
+}
 
 // Nạp lại cấu hình nếu class tồn tại
 if (class_exists('LiteSpeed\Conf')) {
@@ -390,10 +410,16 @@ func (m *Manager) GetPresetSummary() (string, error) {
 	sb.WriteString("✓ Trạng thái các tính năng nổi bật:\n")
 	for _, kc := range keyChecks {
 		status := "TẮT"
-		if val, ok := parsed[kc.key]; ok {
+		val, ok := parsed["litespeed."+kc.key]
+		if !ok {
+			val, ok = parsed[kc.key]
+		}
+		if ok {
 			if num, ok := val.(float64); ok && num > 0 {
 				status = "BẬT"
 			} else if b, ok := val.(bool); ok && b {
+				status = "BẬT"
+			} else if s, ok := val.(string); ok && (s == "1" || s == "true" || s == "on") {
 				status = "BẬT"
 			}
 		}

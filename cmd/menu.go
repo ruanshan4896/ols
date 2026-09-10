@@ -121,13 +121,13 @@ func PrintMenu(w io.Writer) {
 
 		{itemNumStyle.Render("[10]"), itemNameStyle.Render("Đồng bộ cấu hình website"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemDescStyle.Render("Sync vhost, cache & Traefik")},
 		{itemNumStyle.Render("[11]"), itemNameStyle.Render("Bảo mật Salts & đổi pass Admin"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemDescStyle.Render("WordPress.org API")},
-		{itemNumStyle.Render("[12]"), itemNameStyle.Render("Quản lý bộ nhớ Swap RAM"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemDescStyle.Render("Tạo Swap 2-8GB chống sập VPS")},
-		{itemNumStyle.Render("[13]"), itemNameStyle.Render("Đánh giá tải VPS"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemDescStyle.Render("Tính số website có thể cài thêm")},
-		{itemNumStyle.Render("[14]"), itemNameStyle.Render("Xem nhật ký lỗi & Debug"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemDescStyle.Render("Traefik, DB, PHP Error & Quét lỗi")},
+		{itemNumStyle.Render("[12]"), itemNameStyle.Render("Tối ưu hóa LiteSpeed Cache"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemDescStyle.Render("Sao chép & áp dụng Preset tối ưu cho 1 hoặc tất cả site")},
+		{itemNumStyle.Render("[13]"), itemNameStyle.Render("Quản lý bộ nhớ Swap RAM"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemDescStyle.Render("Tạo Swap 2-8GB chống sập VPS")},
+		{itemNumStyle.Render("[14]"), itemNameStyle.Render("Đánh giá tải VPS"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemDescStyle.Render("Tính số website có thể cài thêm")},
+		{itemNumStyle.Render("[15]"), itemNameStyle.Render("Xem nhật ký lỗi & Debug"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemDescStyle.Render("Traefik, DB, PHP Error & Quét lỗi")},
 
-		{itemNumStyle.Render("[15]"), itemNameStyle.Render("Lá chắn bảo vệ OLS Shield"), shieldGroupStyle.Render("BẢO VỆ TOÀN DIỆN"), itemDescStyle.Render("Chống brute-force, khóa XML-RPC & Uploads")},
-		{itemNumStyle.Render("[16]"), itemNameStyle.Render("Quản lý Redirect 301 / 302"), redirGroupStyle.Render("ĐIỀU HƯỚNG TRAFFIC"), itemDescStyle.Render("Redirect domain 301, URL, test & xóa")},
-		{itemNumStyle.Render("[17]"), itemNameStyle.Render("Tối ưu hóa LiteSpeed Cache"), optGroupStyle.Render("TỐI ƯU & DEBUG"), itemDescStyle.Render("Sao chép & áp dụng Preset tối ưu cho 1 hoặc tất cả site")},
+		{itemNumStyle.Render("[16]"), itemNameStyle.Render("Lá chắn bảo vệ OLS Shield"), shieldGroupStyle.Render("BẢO VỆ TOÀN DIỆN"), itemDescStyle.Render("Chống brute-force, khóa XML-RPC & Uploads")},
+		{itemNumStyle.Render("[17]"), itemNameStyle.Render("Quản lý Redirect 301 / 302"), redirGroupStyle.Render("ĐIỀU HƯỚNG TRAFFIC"), itemDescStyle.Render("Redirect domain 301, URL, test & xóa")},
 
 		{itemNumStyle.Render("[0]"), itemNameStyle.Render("Thoát"), sysGroupStyle.Render("HỆ THỐNG"), itemDescStyle.Render("Đóng trình quản trị OLS-CLI")},
 	}
@@ -628,7 +628,17 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 		pauseForEnter(reader)
 
 	case "12":
-		color.Cyan("\n--- [12] Quản lý bộ nhớ Swap RAM chống sập VPS ---")
+		if errCfg != nil {
+			color.Red("\nHệ thống chưa được khởi tạo! Vui lòng chọn [1] trước.")
+			pauseForEnter(reader)
+			return
+		}
+		mgr := site.NewManager(cfg)
+		RunInteractiveLSCacheUI(reader, mgr)
+		pauseForEnter(reader)
+
+	case "13":
+		color.Cyan("\n--- [13] Quản lý bộ nhớ Swap RAM chống sập VPS ---")
 		info, err := system.GetSwapInfo()
 		if err == nil {
 			color.New(color.FgWhite, color.Bold).Println("Trạng thái Swap hiện tại:")
@@ -674,8 +684,8 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 		}
 		pauseForEnter(reader)
 
-	case "13":
-		color.Cyan("\n--- [13] Đánh giá năng lực & Khả năng chịu tải VPS ---")
+	case "14":
+		color.Cyan("\n--- [14] Đánh giá năng lực & Khả năng chịu tải VPS ---")
 		systemDir := "/opt/ols"
 		if errCfg == nil && cfg.SystemDir != "" {
 			systemDir = cfg.SystemDir
@@ -688,8 +698,8 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 		}
 		pauseForEnter(reader)
 
-	case "14":
-		color.Cyan("\n--- [14] Trung tâm Nhật ký & Chẩn đoán Lỗi (Logs & Debug) ---")
+	case "15":
+		color.Cyan("\n--- [15] Trung tâm Nhật ký & Chẩn đoán Lỗi (Logs & Debug) ---")
 		color.New(color.FgHiGreen, color.Bold).Println("  [ DỊCH VỤ HẠ TẦNG CỐT LÕI ]")
 		printOption("[1]", "Traefik Gateway & SSL (Chứng chỉ SSL, Routing, 502 Bad Gateway)")
 		printOption("[2]", "MariaDB Database (Lỗi kết nối cơ sở dữ liệu, crash, query)")
@@ -779,7 +789,7 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 		}
 		pauseForEnter(reader)
 
-	case "15":
+	case "16":
 		if errCfg != nil {
 			color.Red("\nHệ thống chưa được khởi tạo! Vui lòng chọn [1] trước.")
 			pauseForEnter(reader)
@@ -793,7 +803,7 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 		RunInteractiveShieldUI(reader, mgr, systemDir)
 		pauseForEnter(reader)
 
-	case "16":
+	case "17":
 		if errCfg != nil {
 			color.Red("\nHệ thống chưa được khởi tạo! Vui lòng chọn [1] trước.")
 			pauseForEnter(reader)
@@ -807,16 +817,6 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 		RunInteractiveRedirectUI(reader, mgr, systemDir)
 		pauseForEnter(reader)
 
-	case "17":
-		if errCfg != nil {
-			color.Red("\nHệ thống chưa được khởi tạo! Vui lòng chọn [1] trước.")
-			pauseForEnter(reader)
-			return
-		}
-		mgr := site.NewManager(cfg)
-		RunInteractiveLSCacheUI(reader, mgr)
-		pauseForEnter(reader)
-
 	default:
 		color.Yellow("Lựa chọn không hợp lệ! Vui lòng chọn từ 0 đến 17.")
 		pauseForEnter(reader)
@@ -825,7 +825,7 @@ func handleMenuChoice(choice string, reader *bufio.Reader) {
 
 // RunInteractiveLSCacheUI quản lý giao diện tương tác cho việc tối ưu hóa LiteSpeed Cache
 func RunInteractiveLSCacheUI(reader *bufio.Reader, mgr *site.Manager) {
-	color.Cyan("\n--- [17] Tối ưu hóa & Đồng bộ cấu hình LiteSpeed Cache ---")
+	color.Cyan("\n--- [12] Tối ưu hóa & Đồng bộ cấu hình LiteSpeed Cache ---")
 	printOption("[1]", "Lưu cấu hình từ 1 website mẫu thành khuôn mẫu chung (Export Preset)")
 	printOption("[2]", "Áp dụng cấu hình tối ưu cho 1 website cụ thể")
 	printOption("[3]", "Áp dụng cấu hình tối ưu cho TẤT CẢ website trên VPS (Batch Apply)")

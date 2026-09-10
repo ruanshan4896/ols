@@ -193,7 +193,7 @@ func RunInteractiveShieldUI(reader *bufio.Reader, mgr *site.Manager, systemDir s
 		return
 	}
 
-	color.Cyan("\n--- [15] Quản lý lá chắn bảo vệ OLS Shield ---")
+	color.Cyan("\n--- [16] Quản lý lá chắn bảo vệ OLS Shield ---")
 	color.New(color.FgWhite, color.Bold).Println("Danh sách website:")
 	for i, s := range sites {
 		sc, _ := shield.GetShieldConfig(systemDir, s.Domain)

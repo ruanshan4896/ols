@@ -208,4 +208,32 @@ define('NONCE_SALT',       'clean_s4');`
 	}
 }
 
+func TestParseResetPasswordOutput(t *testing.T) {
+	// Case 1: Pure SUCCESS
+	res, err := ParseResetPasswordOutput("SUCCESS:admin", "Secret123")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(res, "User: admin") || !strings.Contains(res, "Secret123") {
+		t.Errorf("unexpected format: %s", res)
+	}
+
+	// Case 2: SUCCESS with leading PHP warning
+	outWithWarning := "PHP Warning: Cannot modify header\nSUCCESS:superadmin\n"
+	res, err = ParseResetPasswordOutput(outWithWarning, "Pass@456")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(res, "User: superadmin") || !strings.Contains(res, "Pass@456") {
+		t.Errorf("unexpected format: %s", res)
+	}
+
+	// Case 3: ERROR from WordPress
+	outErr := "PHP Notice: bla\nERROR: Không tìm thấy tài khoản quản trị viên"
+	_, err = ParseResetPasswordOutput(outErr, "pass")
+	if err == nil || !strings.Contains(err.Error(), "Không tìm thấy tài khoản") {
+		t.Errorf("expected error containing 'Không tìm thấy tài khoản', got %v", err)
+	}
+}
+
 

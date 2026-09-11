@@ -53,6 +53,25 @@ func GetDefaultLSCachePreset() map[string]interface{} {
 	}
 }
 
+// ParseExportOutput trích xuất dữ liệu JSON từ phản hồi PHP, bỏ qua các warning/notice nếu có
+func ParseExportOutput(out string) ([]byte, error) {
+	trimmed := strings.TrimSpace(out)
+	if idx := strings.Index(trimmed, "SUCCESS:"); idx != -1 {
+		b64Data := strings.TrimSpace(trimmed[idx+len("SUCCESS:"):])
+		jsonData, err := base64.StdEncoding.DecodeString(b64Data)
+		if err != nil {
+			return nil, fmt.Errorf("lỗi giải mã dữ liệu cấu hình: %w", err)
+		}
+		return jsonData, nil
+	}
+
+	if idx := strings.Index(trimmed, "ERROR:"); idx != -1 {
+		return nil, fmt.Errorf("%s", strings.TrimSpace(trimmed[idx+len("ERROR:"):]) )
+	}
+
+	return nil, fmt.Errorf("phản hồi không hợp lệ từ WordPress: %s", trimmed)
+}
+
 // ExportLSCachePreset trích xuất toàn bộ cấu hình LiteSpeed Cache từ một website mẫu đã cấu hình hoàn chỉnh
 func (m *Manager) ExportLSCachePreset(sourceDomain string) (int, error) {
 	slug := DomainToSlug(sourceDomain)
@@ -63,6 +82,8 @@ func (m *Manager) ExportLSCachePreset(sourceDomain string) (int, error) {
 	}
 
 	phpScript := `
+error_reporting(E_ALL & ~E_WARNING & ~E_NOTICE & ~E_DEPRECATED);
+@ini_set('display_errors', '0');
 define('WP_USE_THEMES', false);
 require_once '/usr/local/lsws/Example/html/wp-load.php';
 
@@ -115,18 +136,9 @@ echo "SUCCESS:" . base64_encode($encoded);
 		}
 	}
 
-	trimmed := strings.TrimSpace(out)
-	if !strings.HasPrefix(trimmed, "SUCCESS:") {
-		if strings.HasPrefix(trimmed, "ERROR:") {
-			return 0, fmt.Errorf("%s", strings.TrimPrefix(trimmed, "ERROR: "))
-		}
-		return 0, fmt.Errorf("phản hồi không hợp lệ từ WordPress: %s", trimmed)
-	}
-
-	b64Data := strings.TrimPrefix(trimmed, "SUCCESS:")
-	jsonData, err := base64.StdEncoding.DecodeString(b64Data)
+	jsonData, err := ParseExportOutput(out)
 	if err != nil {
-		return 0, fmt.Errorf("lỗi giải mã dữ liệu cấu hình: %w", err)
+		return 0, err
 	}
 
 	var parsed map[string]interface{}
@@ -263,6 +275,18 @@ func (m *Manager) EnsureLSCachePluginInstalled(domain string) error {
 	return nil
 }
 
+// ParseApplyOutput kiểm tra kết quả thực thi áp dụng preset của PHP, bỏ qua các warning/notice không nghiêm trọng
+func ParseApplyOutput(out string) error {
+	trimmed := strings.TrimSpace(out)
+	if strings.HasSuffix(trimmed, "SUCCESS") {
+		return nil
+	}
+	if idx := strings.Index(trimmed, "ERROR:"); idx != -1 {
+		return fmt.Errorf("%s", strings.TrimSpace(trimmed[idx+len("ERROR:"):]) )
+	}
+	return fmt.Errorf("phản hồi từ WordPress: %s", trimmed)
+}
+
 // ApplyLSCachePreset kích hoạt plugin và áp dụng toàn bộ cấu hình tối ưu vào website đích
 func (m *Manager) ApplyLSCachePreset(targetDomain string) error {
 	slug := DomainToSlug(targetDomain)
@@ -295,6 +319,8 @@ func (m *Manager) ApplyLSCachePreset(targetDomain string) error {
 
 	// 3. Thực thi PHP trong container để kích hoạt plugin, nạp options và purge cache
 	phpScript := fmt.Sprintf(`
+error_reporting(E_ALL & ~E_WARNING & ~E_NOTICE & ~E_DEPRECATED);
+@ini_set('display_errors', '0');
 define('WP_USE_THEMES', false);
 require_once '/usr/local/lsws/Example/html/wp-load.php';
 require_once ABSPATH . 'wp-admin/includes/plugin.php';
@@ -362,12 +388,8 @@ echo "SUCCESS";
 		}
 	}
 
-	trimmed := strings.TrimSpace(out)
-	if trimmed != "SUCCESS" {
-		if strings.HasPrefix(trimmed, "ERROR:") {
-			return fmt.Errorf("%s", strings.TrimPrefix(trimmed, "ERROR: "))
-		}
-		return fmt.Errorf("phản hồi từ WordPress: %s", trimmed)
+	if err := ParseApplyOutput(out); err != nil {
+		return err
 	}
 
 	// Báo cho OpenLiteSpeed nạp lại cấu hình và rules cache ngay lập tức

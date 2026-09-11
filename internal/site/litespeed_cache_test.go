@@ -135,3 +135,62 @@ func TestUnzipLSCache(t *testing.T) {
 		t.Errorf("security issue: path traversal file was created at %s", hackedPath)
 	}
 }
+
+func TestParseApplyOutput(t *testing.T) {
+	// Case 1: Chuẩn SUCCESS đơn thuần
+	if err := ParseApplyOutput("SUCCESS"); err != nil {
+		t.Errorf("expected nil error for pure SUCCESS, got %v", err)
+	}
+
+	// Case 2: Kèm theo PHP Warning giống trường hợp thực tế của người dùng
+	warningOut := `PHP Warning:  rmdir(/usr/local/lsws/Example/html/wp-content/litespeed/css/): Directory not empty in /usr/local/lsws/Example/html/wp-content/plugins/litespeed-cache/src/file.cls.php on line 213
+SUCCESS`
+	if err := ParseApplyOutput(warningOut); err != nil {
+		t.Errorf("expected nil error for SUCCESS with PHP warning, got %v", err)
+	}
+
+	// Case 3: Trả về lỗi ERROR: từ WordPress
+	errorOut := `PHP Notice: some notice
+ERROR: Không thể kích hoạt plugin: Plugin file does not exist.`
+	err := ParseApplyOutput(errorOut)
+	if err == nil || !strings.Contains(err.Error(), "Không thể kích hoạt plugin") {
+		t.Errorf("expected extracted error message, got %v", err)
+	}
+
+	// Case 4: Lỗi không xác định
+	unknownOut := "Fatal error: Allowed memory size of 12345 bytes exhausted"
+	err = ParseApplyOutput(unknownOut)
+	if err == nil || !strings.Contains(err.Error(), "phản hồi từ WordPress") {
+		t.Errorf("expected raw output error, got %v", err)
+	}
+}
+
+func TestParseExportOutput(t *testing.T) {
+	// Case 1: Chuẩn SUCCESS kèm base64 JSON
+	rawJSON := `{"cache": 1}`
+	b64 := "SUCCESS:" + "eyJjYWNoZSI6IDF9"
+	data, err := ParseExportOutput(b64)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(data) != rawJSON {
+		t.Errorf("expected %s, got %s", rawJSON, string(data))
+	}
+
+	// Case 2: Kèm PHP Warning phía trước
+	warningWithExport := "PHP Warning: Cannot modify header information\n" + b64
+	data, err = ParseExportOutput(warningWithExport)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(data) != rawJSON {
+		t.Errorf("expected %s, got %s", rawJSON, string(data))
+	}
+
+	// Case 3: Trả về lỗi ERROR:
+	errOut := "PHP Warning: bla\nERROR: Không tìm thấy cấu hình"
+	_, err = ParseExportOutput(errOut)
+	if err == nil || !strings.Contains(err.Error(), "Không tìm thấy cấu hình") {
+		t.Errorf("expected error containing 'Không tìm thấy cấu hình', got %v", err)
+	}
+}

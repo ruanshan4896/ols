@@ -116,6 +116,28 @@ func (m *Manager) GetSitePHPBinary(domain string) string {
 	return fmt.Sprintf("/usr/local/lsws/lsphp%s/bin/php", phpShort)
 }
 
+// ParseResetPasswordOutput trích xuất thông tin đăng nhập từ phản hồi PHP, bỏ qua các warning/notice nếu có
+func ParseResetPasswordOutput(out, newPassword string) (string, error) {
+	trimmedOut := strings.TrimSpace(out)
+	if idx := strings.Index(trimmedOut, "SUCCESS:"); idx != -1 {
+		adminLogin := strings.TrimSpace(trimmedOut[idx+len("SUCCESS:"):])
+		if newlineIdx := strings.IndexAny(adminLogin, "\r\n"); newlineIdx != -1 {
+			adminLogin = strings.TrimSpace(adminLogin[:newlineIdx])
+		}
+		return fmt.Sprintf("User: %s | Mật khẩu mới: %s", adminLogin, newPassword), nil
+	}
+
+	if idx := strings.Index(trimmedOut, "ERROR:"); idx != -1 {
+		errMsg := strings.TrimSpace(trimmedOut[idx+len("ERROR:"):])
+		if newlineIdx := strings.IndexAny(errMsg, "\r\n"); newlineIdx != -1 {
+			errMsg = strings.TrimSpace(errMsg[:newlineIdx])
+		}
+		return "", fmt.Errorf("%s", errMsg)
+	}
+
+	return "", fmt.Errorf("phản hồi từ WordPress: %s", trimmedOut)
+}
+
 // ResetAdminPassword đặt lại mật khẩu cho tài khoản quản trị WordPress.
 // Nếu username rỗng, hàm tự động phát hiện tài khoản Administrator đầu tiên trong database.
 // Hỗ trợ tìm kiếm theo cả user_login và email (nếu có ký tự @).
@@ -142,6 +164,8 @@ func (m *Manager) ResetAdminPassword(domain string, username string, newPassword
 	escapedUser = strings.ReplaceAll(escapedUser, "'", "\\'")
 
 	phpScript := fmt.Sprintf(`
+error_reporting(E_ALL & ~E_WARNING & ~E_NOTICE & ~E_DEPRECATED);
+@ini_set('display_errors', '0');
 define('WP_USE_THEMES', false);
 require_once '/usr/local/lsws/Example/html/wp-load.php';
 
@@ -185,11 +209,5 @@ if ($user) {
 		}
 	}
 
-	trimmedOut := strings.TrimSpace(out)
-	if strings.HasPrefix(trimmedOut, "SUCCESS:") {
-		adminLogin := strings.TrimPrefix(trimmedOut, "SUCCESS:")
-		return fmt.Sprintf("User: %s | Mật khẩu mới: %s", adminLogin, newPassword), nil
-	}
-
-	return "", fmt.Errorf("phản hồi từ WordPress: %s", trimmedOut)
+	return ParseResetPasswordOutput(out, newPassword)
 }
